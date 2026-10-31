@@ -1,5 +1,5 @@
 {
-  "name": "my-tracks-frontend",
+  "name": "track-a-doodle-frontend",
   "version": "0.0.0",
   "scripts": {
     "dev": "vite",
