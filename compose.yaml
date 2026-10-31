@@ -11,7 +11,7 @@
 # The frontend container runs third-party npm code and must not be able to
 # reach Martin, which serves any user's tiles to whoever asks.
 
-name: my-tracks
+name: track-a-doodle
 
 services:
   db:
