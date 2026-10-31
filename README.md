@@ -1,4 +1,4 @@
-# my-tracks
+# Track-a-doodle
 A tool for visualizing, filtering and viewing GPS located activities on a map
 
 See [docs/tech-stack.md](docs/tech-stack.md) for the proposed tech stack and architecture.
