@@ -72,7 +72,7 @@ export default function App() {
     <div className="app">
       <aside className="sidebar">
         <header>
-          <h1>My tracks</h1>
+          <h1>Track-a-doodle</h1>
           {activities.length > 0 && (
             <button type="button" className="link" onClick={() => fitBBox(unionBBox(activities)!)}>
               Show all ({activities.length})
