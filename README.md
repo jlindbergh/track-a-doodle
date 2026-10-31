@@ -59,7 +59,7 @@ Values that more than one layer depends on are defined in the backend and served
 | `martin`   | [mapserver/](mapserver/)   | not published    | Martin vector tile server |
 | `db`       | [postgis/](postgis/)       | `127.0.0.1:5433` | PostgreSQL 17 + PostGIS (h3-pg installed, not enabled) |
 
-Connect with psql: `psql postgres://mytracks_owner:dev-owner-pw@localhost:5433/mytracks`.
+Connect with psql: `psql postgres://trackadoodle_owner:dev-owner-pw@localhost:5433/trackadoodle`.
 Defaults can be overridden with environment variables or a `.env` file (see [compose.yaml](compose.yaml)).
 
 ### Resetting the database

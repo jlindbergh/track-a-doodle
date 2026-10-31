@@ -44,4 +44,4 @@ CREATE TABLE activities (
 CREATE INDEX activities_user_started_idx ON activities (user_id, started_at DESC);
 CREATE INDEX activities_geom_3857_idx    ON activities USING gist (geom_3857);
 
-GRANT SELECT, INSERT, UPDATE, DELETE ON users, activities TO mytracks_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON users, activities TO trackadoodle_app;

@@ -17,8 +17,8 @@ services:
   db:
     build: ./postgis
     environment:
-      POSTGRES_DB: mytracks
-      POSTGRES_USER: mytracks_owner
+      POSTGRES_DB: trackadoodle
+      POSTGRES_USER: trackadoodle_owner
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev-owner-pw}
       APP_DB_PASSWORD: ${APP_DB_PASSWORD:-dev-app-pw}
       MARTIN_DB_PASSWORD: ${MARTIN_DB_PASSWORD:-dev-martin-pw}
@@ -27,7 +27,7 @@ services:
     ports:
       - "127.0.0.1:${DB_PORT:-5433}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mytracks_owner -d mytracks"]
+      test: ["CMD-SHELL", "pg_isready -U trackadoodle_owner -d trackadoodle"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -37,7 +37,7 @@ services:
     image: ghcr.io/maplibre/martin:v0.18.1
     command: ["--config", "/config/config.yaml"]
     environment:
-      DATABASE_URL: postgres://mytracks_martin:${MARTIN_DB_PASSWORD:-dev-martin-pw}@db:5432/mytracks
+      DATABASE_URL: postgres://trackadoodle_martin:${MARTIN_DB_PASSWORD:-dev-martin-pw}@db:5432/trackadoodle
     volumes:
       # Mount the directory, not the file: a file mount goes stale when an
       # editor or git replaces the file.
@@ -50,7 +50,7 @@ services:
   backend:
     build: ./backend
     environment:
-      DATABASE_URL: postgres://mytracks_app:${APP_DB_PASSWORD:-dev-app-pw}@db:5432/mytracks
+      DATABASE_URL: postgres://trackadoodle_app:${APP_DB_PASSWORD:-dev-app-pw}@db:5432/trackadoodle
       MARTIN_URL: http://martin:3000
       LISTEN_ADDR: ":8080"
       # Development only: every request is treated as this user until OIDC login exists.
