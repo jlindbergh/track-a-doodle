@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/auth"
-	"github.com/jlindbergh/my-tracks/backend/internal/store"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/auth"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/store"
 )
 
 func TestTileUsesSessionUser(t *testing.T) {

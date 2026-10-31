@@ -12,8 +12,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/activity"
-	"github.com/jlindbergh/my-tracks/backend/internal/gpxfile"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/gpxfile"
 )
 
 // Store wraps a PostgreSQL connection pool.

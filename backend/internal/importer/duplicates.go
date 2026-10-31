@@ -3,7 +3,7 @@ package importer
 import (
 	"time"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/activity"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
 )
 
 // Duplicate detection.

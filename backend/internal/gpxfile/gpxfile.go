@@ -12,7 +12,7 @@ import (
 
 	"github.com/tkrajina/gpxgo/gpx"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/activity"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
 )
 
 // ErrNoTrack is returned when a file has no track or route with at least

@@ -10,7 +10,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/importer"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/importer"
 )
 
 func TestConfigNeedsNoUser(t *testing.T) {

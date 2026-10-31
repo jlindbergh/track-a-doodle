@@ -3,8 +3,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/activity"
-	"github.com/jlindbergh/my-tracks/backend/internal/importer"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/importer"
 )
 
 // Tiles. The zoom range is only enforced here; Martin serves any zoom.

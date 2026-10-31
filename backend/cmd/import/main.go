@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/importer"
-	"github.com/jlindbergh/my-tracks/backend/internal/store"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/importer"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/store"
 )
 
 func main() {
