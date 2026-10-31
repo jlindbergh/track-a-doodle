@@ -10,7 +10,8 @@ import Map, {
 } from 'react-map-gl/maplibre';
 import type { Activity } from '../api';
 import { useConfig } from '../config';
-import { defaultSportColor, formatDate, formatDistance, sportStyles } from '../format';
+import { defaultSportColor, sportStyles } from '../format';
+import ActivityPopup from './ActivityPopup';
 
 // OpenFreeMap: free vector basemap, no API key. Data © OpenStreetMap
 // contributors (ODbL); attribution is supplied by the style itself.
@@ -112,11 +113,9 @@ export default function TrackMap({ mapRef, activities, dataVersion, selectedId, 
           latitude={popup.latitude}
           onClose={() => setPopup(null)}
           closeOnClick={false}
+          maxWidth="300px"
         >
-          <strong>{popupActivity.name}</strong>
-          <div>
-            {formatDate(popupActivity.startedAt)} · {formatDistance(popupActivity.distanceM)}
-          </div>
+          <ActivityPopup activity={popupActivity} />
         </Popup>
       )}
     </Map>
