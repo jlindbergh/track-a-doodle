@@ -13,7 +13,7 @@ import (
 
 // These tests need a database with the schema from postgis/init, e.g.
 //
-//	TEST_DATABASE_URL=postgres://mytracks_app:dev-app-pw@db:5432/mytracks go test ./...
+//	TEST_DATABASE_URL=postgres://trackadoodle_app:dev-app-pw@db:5432/trackadoodle go test ./...
 //
 // Each test creates its own users and deletes them afterwards.
 

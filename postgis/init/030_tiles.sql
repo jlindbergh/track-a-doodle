@@ -53,4 +53,4 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION activities_tiles(integer, integer, integer, json) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION activities_tiles(integer, integer, integer, json) TO mytracks_martin;
+GRANT EXECUTE ON FUNCTION activities_tiles(integer, integer, integer, json) TO trackadoodle_martin;
