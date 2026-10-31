@@ -14,6 +14,8 @@
   --warning-border: #f0d48a;
   /* MapLibre popups are white in both color schemes, so their text is not --fg. */
   --popup-fg: #1d2125;
+  --popup-muted: #646d76;
+  --popup-accent: #2563eb;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color: var(--fg);
   background: var(--bg);
@@ -375,6 +377,50 @@ button.link {
 
 .maplibregl-popup-content {
   color: var(--popup-fg);
+}
+
+.activity-popup {
+  font-size: 0.8125rem;
+  /* Keeps the name clear of the close button. */
+  padding-right: 12px;
+}
+
+.popup-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 12px;
+  margin: 6px 0 0;
+}
+
+.popup-facts dt {
+  color: var(--popup-muted);
+}
+
+.popup-facts dd {
+  margin: 0;
+}
+
+.popup-sport {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.popup-sport .swatch {
+  margin-top: 0;
+}
+
+.popup-filename {
+  overflow-wrap: anywhere;
+}
+
+.popup-details {
+  margin-top: 8px;
+}
+
+.popup-details summary {
+  cursor: pointer;
+  color: var(--popup-accent);
 }
 
 @media (max-width: 700px) {

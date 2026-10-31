@@ -13,6 +13,9 @@ export interface Activity extends ActivityFacts {
   id: string;
   /** [west, south, east, north] in WGS 84. */
   bbox: [number, number, number, number];
+  /** The name of the imported file, if known. */
+  sourceFilename: string | null;
+  importedAt: string;
 }
 
 /** How two activities differ, as computed by the backend. */
