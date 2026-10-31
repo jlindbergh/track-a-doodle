@@ -231,7 +231,8 @@ func scanFacts(row pgx.Row) (*activity.Facts, error) {
 func (s *Store) ListActivities(ctx context.Context, userID string) ([]activity.Summary, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT `+factsColumns+`,
-		       ST_XMin(geom), ST_YMin(geom), ST_XMax(geom), ST_YMax(geom)
+		       ST_XMin(geom), ST_YMin(geom), ST_XMax(geom), ST_YMax(geom),
+		       source_filename, imported_at
 		  FROM activities
 		 WHERE user_id = $1
 		 ORDER BY started_at DESC NULLS LAST, imported_at DESC`, userID)
@@ -243,7 +244,8 @@ func (s *Store) ListActivities(ctx context.Context, userID string) ([]activity.S
 	list := []activity.Summary{}
 	for rows.Next() {
 		var a activity.Summary
-		fields := append(factsFields(&a.Facts), &a.BBox[0], &a.BBox[1], &a.BBox[2], &a.BBox[3])
+		fields := append(factsFields(&a.Facts), &a.BBox[0], &a.BBox[1], &a.BBox[2], &a.BBox[3],
+			&a.SourceFilename, &a.ImportedAt)
 		if err := rows.Scan(fields...); err != nil {
 			return nil, fmt.Errorf("scan activity: %w", err)
 		}

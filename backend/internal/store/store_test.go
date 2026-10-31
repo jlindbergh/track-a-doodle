@@ -154,6 +154,31 @@ func TestInsertActivitySameFile(t *testing.T) {
 	}
 }
 
+func TestListActivities(t *testing.T) {
+	s := testStore(t)
+	alice := testUser(t, s)
+	bob := testUser(t, s)
+	before := time.Now()
+	want := insert(t, s, alice.ID, newActivity(0, 3600, 1), rule)
+	insert(t, s, bob.ID, newActivity(time.Hour, 3600, 1), rule)
+
+	list, err := s.ListActivities(context.Background(), alice.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].ID != want.New.ID {
+		t.Fatalf("list = %+v, want only activity %s: other users' activities must not be listed", list, want.New.ID)
+	}
+	got := list[0]
+	if got.SourceFilename == nil || *got.SourceFilename != "run.gpx" {
+		t.Errorf("SourceFilename = %v, want run.gpx", got.SourceFilename)
+	}
+	// Allow for clock skew between the test and the database.
+	if got.ImportedAt.Before(before.Add(-time.Minute)) || got.ImportedAt.After(time.Now().Add(time.Minute)) {
+		t.Errorf("ImportedAt = %v, want about %v", got.ImportedAt, before)
+	}
+}
+
 func TestInsertActivityOtherUsersAreIgnored(t *testing.T) {
 	s := testStore(t)
 	alice := testUser(t, s)
