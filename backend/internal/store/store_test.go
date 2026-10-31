@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/activity"
-	"github.com/jlindbergh/my-tracks/backend/internal/gpxfile"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/gpxfile"
 )
 
 // These tests need a database with the schema from postgis/init, e.g.

@@ -1,4 +1,4 @@
-module github.com/jlindbergh/my-tracks/backend
+module github.com/jlindbergh/track-a-doodle/backend
 
 go 1.25.14
 

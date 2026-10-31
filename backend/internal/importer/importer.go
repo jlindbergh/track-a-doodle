@@ -12,9 +12,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/activity"
-	"github.com/jlindbergh/my-tracks/backend/internal/gpxfile"
-	"github.com/jlindbergh/my-tracks/backend/internal/store"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/gpxfile"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/store"
 )
 
 // MaxFileSize is the largest file accepted for import.

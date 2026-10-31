@@ -1,4 +1,4 @@
-// Command server runs the my-tracks HTTP API.
+// Command server runs the track-a-doodle HTTP API.
 package main
 
 import (
@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/api"
-	"github.com/jlindbergh/my-tracks/backend/internal/auth"
-	"github.com/jlindbergh/my-tracks/backend/internal/importer"
-	"github.com/jlindbergh/my-tracks/backend/internal/store"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/api"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/auth"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/importer"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/store"
 )
 
 func main() {

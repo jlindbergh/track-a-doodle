@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/activity"
-	"github.com/jlindbergh/my-tracks/backend/internal/store"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/store"
 )
 
 const validGPX = `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><trk><trkseg>

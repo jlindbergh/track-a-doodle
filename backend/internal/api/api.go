@@ -13,9 +13,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/jlindbergh/my-tracks/backend/internal/auth"
-	"github.com/jlindbergh/my-tracks/backend/internal/importer"
-	"github.com/jlindbergh/my-tracks/backend/internal/store"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/auth"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/importer"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/store"
 )
 
 // maxUploadSize caps one import request, which may hold many files.
