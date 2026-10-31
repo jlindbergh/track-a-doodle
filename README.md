@@ -27,6 +27,8 @@ Frontend source is mounted into its container, so edits reload live. Backend cha
 
 To batch-import a folder, put your files in [samples/](samples/) (subfolders are fine) and run `./dev.sh import`.
 
+An activity's sport comes from the GPX track's `<type>`. Files without one get a sport from a word like "run", "ride" or "hike" in a track's `<name>`, and failing that in the filename (e.g. `Morning_Run.gpx`).
+
 Running it again is safe; see [Duplicate detection](#duplicate-detection).
 
 Files without a GPS track (indoor rides, treadmill runs, gym sessions) aren't imported, since there is nothing to show on the map. The UI and the batch command report how many were skipped and their activity types. Points at 0,0 count as missing a GPS fix.

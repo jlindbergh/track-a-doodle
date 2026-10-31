@@ -71,6 +71,7 @@ func Parse(data []byte, fallbackName string) (Activity, error) {
 	}
 
 	a := Activity{Name: g.Name}
+	var trackNames []string
 	for i, trk := range g.Tracks {
 		if a.Name == "" {
 			a.Name = trk.Name
@@ -78,6 +79,7 @@ func Parse(data []byte, fallbackName string) (Activity, error) {
 		if a.Sport == "" {
 			a.Sport = trk.Type
 		}
+		trackNames = append(trackNames, trk.Name)
 		for j, seg := range trk.Segments {
 			if err := a.addLine(seg.Points, fmt.Sprintf("track %d, segment %d", i+1, j+1)); err != nil {
 				return Activity{}, err
@@ -95,6 +97,9 @@ func Parse(data []byte, fallbackName string) (Activity, error) {
 		}
 	}
 	a.Sport = normalizeSport(a.Sport)
+	if a.Sport == activity.SportUnknown {
+		a.Sport = guessSport(trackNames, fallbackName)
+	}
 
 	if len(a.Lines) == 0 {
 		return Activity{}, &NoTrackError{Name: a.Name, Sport: a.Sport}
@@ -226,4 +231,52 @@ func normalizeSport(s string) string {
 		return alias
 	}
 	return s
+}
+
+// sportWords maps words in activity names, as Strava and Garmin write them
+// ("Morning Run", "Stockholm Cycling"), to sport ids.
+var sportWords = map[string]string{
+	"run":      activity.SportRunning,
+	"running":  activity.SportRunning,
+	"jog":      activity.SportRunning,
+	"jogging":  activity.SportRunning,
+	"ride":     activity.SportCycling,
+	"cycling":  activity.SportCycling,
+	"bike":     activity.SportCycling,
+	"biking":   activity.SportCycling,
+	"walk":     activity.SportWalking,
+	"walking":  activity.SportWalking,
+	"hike":     activity.SportHiking,
+	"hiking":   activity.SportHiking,
+	"swim":     activity.SportSwimming,
+	"swimming": activity.SportSwimming,
+}
+
+// guessSport looks for a sport in the names of a file's tracks, in order,
+// and last in its filename. It is used for files without an activity type.
+func guessSport(trackNames []string, filename string) string {
+	for _, name := range append(trackNames, filename) {
+		if sport := sportFromName(name); sport != activity.SportUnknown {
+			return sport
+		}
+	}
+	return activity.SportUnknown
+}
+
+// sportFromName returns the sport named by a word in name, or SportUnknown
+// if no word does, or if words name different sports.
+func sportFromName(name string) string {
+	words := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool { return !unicode.IsLetter(r) })
+	found := activity.SportUnknown
+	for _, w := range words {
+		sport, ok := sportWords[w]
+		if !ok {
+			continue
+		}
+		if found != activity.SportUnknown && sport != found {
+			return activity.SportUnknown
+		}
+		found = sport
+	}
+	return found
 }
