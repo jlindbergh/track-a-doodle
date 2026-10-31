@@ -170,6 +170,80 @@ func TestNormalizeSport(t *testing.T) {
 	}
 }
 
+func TestSportFromName(t *testing.T) {
+	for in, want := range map[string]string{
+		"":                    "unknown",
+		"Morning Run":         "running",
+		"Afternoon Ride":      "cycling",
+		"Stockholm - Cycling": "cycling",
+		"Morning_Run":         "running",
+		"Hike!":               "hiking",
+		"Run, running":        "running",
+		"Brunch":              "unknown",
+		"Walk then run":       "unknown",
+		"activity_123456":     "unknown",
+	} {
+		if got := sportFromName(in); got != want {
+			t.Errorf("sportFromName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// sportDoc returns a GPX document with one track. Empty arguments leave out
+// the metadata name, track name or type; trkName is written as CDATA.
+func sportDoc(metaName, trkName, typ string) string {
+	doc := `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1">`
+	if metaName != "" {
+		doc += `<metadata><name>` + metaName + `</name></metadata>`
+	}
+	doc += `<trk>`
+	if trkName != "" {
+		doc += `<name><![CDATA[` + trkName + `]]></name>`
+	}
+	if typ != "" {
+		doc += `<type>` + typ + `</type>`
+	}
+	return doc + `<trkseg><trkpt lat="1" lon="2"/><trkpt lat="3" lon="4"/></trkseg></trk></gpx>`
+}
+
+func TestParseSportFallback(t *testing.T) {
+	tests := []struct {
+		name              string
+		doc, fallbackName string
+		wantSport         string
+	}{
+		{"type wins over track name", sportDoc("", "Morning Run", "ride"), "Evening_Walk", "cycling"},
+		{"unrecognized type wins", sportDoc("", "Morning Run", "kayaking"), "x", "kayaking"},
+		{"track name in CDATA", sportDoc("", "Evening Walk", ""), "x", "walking"},
+		{"filename when track name has no sport", sportDoc("", "Lunch", ""), "Morning_Run", "running"},
+		{"filename when track names two sports", sportDoc("", "Walk then run", ""), "Swim", "swimming"},
+		{"metadata name is not used", sportDoc("Morning Run", "Lunch", ""), "x", "unknown"},
+		{"nothing matches", sportDoc("", "Lunch", ""), "activity_123", "unknown"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, err := Parse([]byte(tt.doc), tt.fallbackName)
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if a.Sport != tt.wantSport {
+				t.Errorf("Sport = %q, want %q", a.Sport, tt.wantSport)
+			}
+		})
+	}
+}
+
+func TestParseSportFallbackWithoutTrack(t *testing.T) {
+	doc := `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Treadmill run</name></trk></gpx>`
+	var noTrack *NoTrackError
+	if _, err := Parse([]byte(doc), "x"); !errors.As(err, &noTrack) {
+		t.Fatalf("err = %v, want a NoTrackError", err)
+	}
+	if noTrack.Sport != "running" {
+		t.Errorf("Sport = %q, want running", noTrack.Sport)
+	}
+}
+
 func TestParseInvalid(t *testing.T) {
 	if _, err := Parse([]byte("not xml"), "x"); err == nil {
 		t.Error("expected an error for invalid input")
