@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Development helper for the my-tracks stack. Run ./dev.sh help for usage.
+# Development helper for the track-a-doodle stack. Run ./dev.sh help for usage.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -7,9 +7,9 @@ cd "$(dirname "$0")"
 FRONTEND_URL="http://localhost:5173"
 BACKEND_URL="http://localhost:8080"
 # The network with the database; see compose.yaml.
-COMPOSE_NETWORK="my-tracks_data"
+COMPOSE_NETWORK="track-a-doodle_data"
 # Go module cache shared by test runs, so dependencies are downloaded once.
-GO_CACHE_VOLUME="my-tracks-go-cache"
+GO_CACHE_VOLUME="track-a-doodle-go-cache"
 TEST_DATABASE_URL="postgres://trackadoodle_app:${APP_DB_PASSWORD:-dev-app-pw}@db:5432/trackadoodle"
 
 usage() {
