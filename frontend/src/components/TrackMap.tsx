@@ -1,5 +1,5 @@
 import type { FilterSpecification } from 'maplibre-gl';
-import { useState, type RefObject } from 'react';
+import { useImperativeHandle, useState, type Ref, type RefObject } from 'react';
 import Map, {
   Layer,
   NavigationControl,
@@ -63,7 +63,13 @@ function compareByStart(a: Activity, b: Activity): number {
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
+/** What the map lets its parent do, through its ref. */
+export interface TrackMapHandle {
+  closePopup(): void;
+}
+
 interface Props {
+  ref?: Ref<TrackMapHandle>;
   mapRef: RefObject<MapRef | null>;
   /** The user's activities. The popup shows the clicked one; tiles only hold ids and sports. */
   activities: Activity[];
@@ -77,6 +83,7 @@ interface Props {
 }
 
 export default function TrackMap({
+  ref,
   mapRef,
   activities,
   dataVersion,
@@ -88,6 +95,12 @@ export default function TrackMap({
   const { tiles } = useConfig();
   const [popup, setPopup] = useState<PopupInfo | null>(null);
   const [cursor, setCursor] = useState<string>('');
+
+  useImperativeHandle(ref, () => ({
+    closePopup() {
+      setPopup(null);
+    },
+  }));
 
   function handleClick(e: MapLayerMouseEvent) {
     const { x, y } = e.point;
