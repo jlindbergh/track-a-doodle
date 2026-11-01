@@ -107,3 +107,9 @@ export async function importFiles(files: File[], allowDuplicates = false): Promi
   if (!res.ok) throw await responseError(res, 'Import');
   return res.json();
 }
+
+/** Deletes one of the user's activities. */
+export async function deleteActivity(id: string): Promise<void> {
+  const res = await fetch(`/api/activities/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  if (!res.ok) throw await responseError(res, 'Delete');
+}
