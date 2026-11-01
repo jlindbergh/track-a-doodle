@@ -110,7 +110,9 @@ export default function TrackMap({ mapRef, activities, dataVersion, selectedId, 
     onSelect(popup.activityIds[index]);
   }
 
-  const popupActivity = popup && activities.find((a) => a.id === popup.activityIds[popup.index]);
+  // The popup is hidden once any of its activities is deleted, rather than stepping over a gap.
+  const popupStale = popup != null && !popup.activityIds.every((id) => activities.some((a) => a.id === id));
+  const popupActivity = popup && !popupStale && activities.find((a) => a.id === popup.activityIds[popup.index]);
   const selectedFilter: FilterSpecification = ['==', ['get', 'id'], selectedId ?? ''];
 
   return (
