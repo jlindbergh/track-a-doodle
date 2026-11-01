@@ -35,10 +35,10 @@ const selectedCasingWidth = ['interpolate', ['linear'], ['zoom'], 5, 5, 12, 7.5,
 // Zoomed out, activities are shown as bubbles; zoomed in, as tracks. In between,
 // the bubbles fade out as the tracks fade in. Below tracksMinZoom no track tiles
 // are requested at all.
-const tracksMinZoom = 6;
-const tracksOpaqueZoom = 7.5;
+const tracksMinZoom = 7.0;
+const tracksOpaqueZoom = 8.5;
 const bubblesFadeZoom = 7;
-const bubbleMaxZoom = 8.5;
+const bubbleMaxZoom = 8.0;
 
 /** Fades the tracks in from tracksMinZoom, up to opacity. */
 function trackOpacity(opacity: number): number {
