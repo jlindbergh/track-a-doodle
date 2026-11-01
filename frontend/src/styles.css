@@ -385,6 +385,34 @@ button.link {
   padding-right: 12px;
 }
 
+.popup-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.popup-nav button {
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: none;
+  color: var(--popup-accent);
+  font: inherit;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.popup-nav button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.popup-nav-count {
+  color: var(--popup-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .popup-facts {
   display: grid;
   grid-template-columns: auto 1fr;

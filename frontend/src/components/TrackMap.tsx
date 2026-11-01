@@ -41,10 +41,26 @@ const activitiesLayer: LayerProps = {
   paint: { 'line-color': lineColor, 'line-width': lineWidth, 'line-opacity': 0.8 },
 };
 
+// How far from a click, in pixels, a track still counts as clicked.
+const clickTolerancePx = 4;
+
 interface PopupInfo {
   longitude: number;
   latitude: number;
-  activityId: string;
+  /** The clicked activities, oldest first: the same order the tiles draw them in. */
+  activityIds: string[];
+  /** The one shown in the popup. */
+  index: number;
+}
+
+/** Oldest first, undated first; matches the ORDER BY in postgis/init/030_tiles.sql. */
+function compareByStart(a: Activity, b: Activity): number {
+  if (a.startedAt !== b.startedAt) {
+    if (a.startedAt == null) return -1;
+    if (b.startedAt == null) return 1;
+    return Date.parse(a.startedAt) - Date.parse(b.startedAt);
+  }
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 interface Props {
@@ -64,18 +80,37 @@ export default function TrackMap({ mapRef, activities, dataVersion, selectedId, 
   const [cursor, setCursor] = useState<string>('');
 
   function handleClick(e: MapLayerMouseEvent) {
-    const feature = e.features?.[0];
-    if (!feature) {
+    const { x, y } = e.point;
+    const features =
+      mapRef.current?.queryRenderedFeatures(
+        [
+          [x - clickTolerancePx, y - clickTolerancePx],
+          [x + clickTolerancePx, y + clickTolerancePx],
+        ],
+        { layers: [activitiesLayerId] },
+      ) ?? [];
+    // A track can come back once per tile it crosses.
+    const ids = new Set(features.map((f) => String(f.properties.id)));
+    const hits = activities.filter((a) => ids.has(a.id)).sort(compareByStart);
+    if (hits.length === 0) {
       setPopup(null);
       onSelect(null);
       return;
     }
-    const activityId = String(feature.properties.id);
-    setPopup({ longitude: e.lngLat.lng, latitude: e.lngLat.lat, activityId });
-    onSelect(activityId);
+    // Start with the most recent, which is the one drawn on top.
+    const index = hits.length - 1;
+    setPopup({ longitude: e.lngLat.lng, latitude: e.lngLat.lat, activityIds: hits.map((a) => a.id), index });
+    onSelect(hits[index].id);
   }
 
-  const popupActivity = popup && activities.find((a) => a.id === popup.activityId);
+  function step(delta: number) {
+    if (!popup) return;
+    const index = Math.min(Math.max(popup.index + delta, 0), popup.activityIds.length - 1);
+    setPopup({ ...popup, index });
+    onSelect(popup.activityIds[index]);
+  }
+
+  const popupActivity = popup && activities.find((a) => a.id === popup.activityIds[popup.index]);
   const selectedFilter: FilterSpecification = ['==', ['get', 'id'], selectedId ?? ''];
 
   return (
@@ -128,7 +163,12 @@ export default function TrackMap({ mapRef, activities, dataVersion, selectedId, 
           closeOnClick={false}
           maxWidth="300px"
         >
-          <ActivityPopup activity={popupActivity} />
+          <ActivityPopup
+            activity={popupActivity}
+            position={{ index: popup.index, count: popup.activityIds.length }}
+            onPrev={() => step(-1)}
+            onNext={() => step(1)}
+          />
         </Popup>
       )}
     </Map>
