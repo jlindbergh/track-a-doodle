@@ -7,10 +7,12 @@ interface Props {
   position?: { index: number; count: number };
   onPrev?: () => void;
   onNext?: () => void;
+  /** Scrolls the sidebar list to activity. */
+  onShowInList?: () => void;
 }
 
 /** What the map popup shows about a clicked activity. */
-export default function ActivityPopup({ activity, position, onPrev, onNext }: Props) {
+export default function ActivityPopup({ activity, position, onPrev, onNext, onShowInList }: Props) {
   return (
     <div className="activity-popup">
       {position && position.count > 1 && (
@@ -45,6 +47,12 @@ export default function ActivityPopup({ activity, position, onPrev, onNext }: Pr
         <dt>Duration</dt>
         <dd>{activity.durationS != null ? formatDuration(activity.durationS) : 'Unknown'}</dd>
       </dl>
+      {/* Floated, so it shares the "More details" line and the details still get the full width when opened. */}
+      {onShowInList && (
+        <button type="button" className="link popup-show-in-list" onClick={onShowInList}>
+          Show in list
+        </button>
+      )}
       <details className="popup-details">
         <summary>More details</summary>
         <dl className="popup-facts">

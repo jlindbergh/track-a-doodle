@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
 import { fetchActivities, type Activity } from './api';
-import ActivityList from './components/ActivityList';
+import ActivityList, { type ActivityListHandle } from './components/ActivityList';
 import ConfirmDelete from './components/ConfirmDelete';
 import ImportPanel from './components/ImportPanel';
 import TrackMap from './components/TrackMap';
@@ -24,6 +24,7 @@ function unionBBox(activities: Activity[]): BBox | null {
 
 export default function App() {
   const mapRef = useRef<MapRef>(null);
+  const listRef = useRef<ActivityListHandle>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -100,6 +101,7 @@ export default function App() {
         <ImportPanel onImported={handleImported} />
         {loadError && <p className="error">{loadError}</p>}
         <ActivityList
+          ref={listRef}
           activities={activities}
           selectedId={selectedId}
           onSelect={handleSelect}
@@ -113,6 +115,7 @@ export default function App() {
           dataVersion={tilesVersion}
           selectedId={selectedId}
           onSelect={setSelectedId}
+          onShowInList={(id) => listRef.current?.show(id)}
           onLoad={() => setMapReady(true)}
         />
       </main>

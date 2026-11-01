@@ -1,4 +1,4 @@
-import { useRef, useState, type MouseEvent, type ToggleEvent } from 'react';
+import { useImperativeHandle, useRef, useState, type MouseEvent, type Ref, type ToggleEvent } from 'react';
 import type { Activity } from '../api';
 import { formatDate, formatDistance, formatDuration, sportColor, sportLabel } from '../format';
 
@@ -6,6 +6,15 @@ const menuId = 'activity-menu';
 
 /** Gap between a row's actions button and its menu, in pixels. */
 const menuGap = 4;
+
+/** How long a row is outlined after show(), in milliseconds. */
+const flashDuration = 1200;
+
+/** What the list lets its parent do, through its ref. */
+export interface ActivityListHandle {
+  /** Scrolls to the activity's row, focuses it and briefly outlines it. */
+  show(id: string): void;
+}
 
 function rowClass(selected: boolean, menuOpen: boolean): string {
   return ['activity-row', selected && 'selected', menuOpen && 'menu-open'].filter(Boolean).join(' ');
@@ -16,14 +25,32 @@ interface Props {
   selectedId: string | null;
   onSelect: (activity: Activity) => void;
   onRequestDelete: (activity: Activity) => void;
+  ref?: Ref<ActivityListHandle>;
 }
 
-export default function ActivityList({ activities, selectedId, onSelect, onRequestDelete }: Props) {
+export default function ActivityList({ activities, selectedId, onSelect, onRequestDelete, ref }: Props) {
+  const listRef = useRef<HTMLUListElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   // The actions button the menu was opened from, to place it after it opens.
   const anchorRef = useRef<HTMLElement | null>(null);
   // The activity whose menu is open, if any.
   const [menuFor, setMenuFor] = useState<Activity | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    show(id) {
+      const row = listRef.current?.querySelector<HTMLLIElement>(`[data-activity-id="${CSS.escape(id)}"]`);
+      if (!row) return;
+      // Focus first, without scrolling, so only the scroll below moves the list.
+      row.querySelector<HTMLButtonElement>('.activity')?.focus({ preventScroll: true });
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      row.scrollIntoView({ block: 'center', behavior: reducedMotion ? 'auto' : 'smooth' });
+      const accent = getComputedStyle(row).getPropertyValue('--accent');
+      row.animate([{ boxShadow: `inset 0 0 0 2px ${accent}` }, { boxShadow: 'inset 0 0 0 2px transparent' }], {
+        duration: flashDuration,
+        easing: 'ease-out',
+      });
+    },
+  }));
 
   /** Places the menu below anchor, right-aligned with it. */
   function placeMenu(anchor: HTMLElement) {
@@ -80,10 +107,11 @@ export default function ActivityList({ activities, selectedId, onSelect, onReque
   }
   return (
     <>
-      <ul className="activity-list">
+      <ul ref={listRef} className="activity-list">
         {activities.map((a) => (
           <li
             key={a.id}
+            data-activity-id={a.id}
             className={rowClass(a.id === selectedId, a.id === menuFor?.id)}
             onContextMenu={(e) => handleContextMenu(e, a)}
           >

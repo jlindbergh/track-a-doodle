@@ -591,6 +591,13 @@ button.link {
   margin-top: 8px;
 }
 
+/* On the "More details" line: the same margin-top, the popup's own accent. */
+.popup-show-in-list {
+  float: right;
+  margin-top: 8px;
+  color: var(--popup-accent);
+}
+
 .popup-details summary {
   cursor: pointer;
   color: var(--popup-accent);
