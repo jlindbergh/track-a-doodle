@@ -3,14 +3,16 @@ package activity
 // Sport ids. An imported activity gets one of these when its file's activity
 // type is recognized. Other types are kept as written, in snake_case.
 const (
-	SportCrossCountrySkiing = "cross_country_skiing"
-	SportCycling            = "cycling"
-	SportDownhillSkiing     = "downhill_skiing"
-	SportHiking             = "hiking"
-	SportRunning            = "running"
-	SportSkating            = "skating"
-	SportSwimming           = "swimming"
-	SportWalking            = "walking"
+	SportCrossCountrySkiing    = "cross_country_skiing"
+	SportCycling               = "cycling"
+	SportDownhillSkiing        = "downhill_skiing"
+	SportHiking                = "hiking"
+	SportRowing                = "rowing"
+	SportRunning               = "running"
+	SportSkating               = "skating"
+	SportStandUpPaddleboarding = "stand_up_paddleboarding"
+	SportSwimming              = "swimming"
+	SportWalking               = "walking"
 
 	// SportUnknown is used when a file has no activity type.
 	SportUnknown = "unknown"
@@ -20,7 +22,7 @@ const (
 // from GET /api/config and picks how to show the ones it knows about.
 func Sports() []string {
 	return []string{
-		SportCrossCountrySkiing, SportCycling, SportDownhillSkiing, SportHiking,
-		SportRunning, SportSkating, SportSwimming, SportWalking,
+		SportCrossCountrySkiing, SportCycling, SportDownhillSkiing, SportHiking, SportRowing,
+		SportRunning, SportSkating, SportStandUpPaddleboarding, SportSwimming, SportWalking,
 	}
 }
