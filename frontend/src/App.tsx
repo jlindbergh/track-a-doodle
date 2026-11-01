@@ -106,6 +106,7 @@ export default function App() {
           selectedId={selectedId}
           onSelect={setSelectedId}
           onShowInList={(id) => listRef.current?.show(id)}
+          onFitBounds={fitBBox}
           onLoad={() => setMapReady(true)}
         />
       </main>
