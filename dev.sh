@@ -23,7 +23,9 @@ Usage: ./dev.sh [command]
   status     Show the containers.
   logs [s]   Follow logs, optionally for given services (db, martin, backend, frontend).
   test       Run backend tests (including database tests) and the frontend type check.
-  import ... Batch-import GPX files from samples/, e.g. ./dev.sh import -allow-duplicates
+  import [dir] [-allow-duplicates]
+             Batch-import GPX files from dir (default samples/), searched
+             recursively, e.g. ./dev.sh import ~/gpx
   reset-db   Delete ALL data and recreate the database from postgis/init.
              Needed after changing the SQL there. Asks for confirmation.
   help       Show this help.
@@ -91,6 +93,25 @@ cmd_test() {
   docker compose run --rm --no-deps frontend npm run typecheck
 }
 
+# cmd_import [dir] [flags...]: imports dir (default samples/, which compose
+# already mounts) by mounting it read-only into a one-off backend container.
+cmd_import() {
+  require_docker
+  if [ $# -gt 0 ] && [ "${1#-}" = "$1" ]; then
+    local dir=$1
+    shift
+    if [ ! -d "$dir" ]; then
+      echo "Not a directory: $dir" >&2
+      exit 1
+    fi
+    dir=$(cd "$dir" && pwd)
+    log "Importing GPX files from $dir"
+    docker compose run --rm -v "$dir":/import:ro backend import -dir /import "$@"
+  else
+    docker compose run --rm backend import "$@"
+  fi
+}
+
 cmd_reset_db() {
   require_docker
   echo "This deletes ALL users and imported activities in the local database."
@@ -110,7 +131,7 @@ case "${1:-up}" in
   status) require_docker; docker compose ps ;;
   logs) require_docker; shift; docker compose logs --follow --tail 100 "$@" ;;
   test) cmd_test ;;
-  import) require_docker; shift; docker compose run --rm backend import "$@" ;;
+  import) shift; cmd_import "$@" ;;
   reset-db) cmd_reset_db ;;
   help | -h | --help) usage ;;
   *)
