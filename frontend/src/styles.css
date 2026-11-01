@@ -8,6 +8,10 @@
   --accent: #2563eb;
   --accent-fg: #ffffff;
   --error: #b42318;
+  /* Text on an --error background. */
+  --error-fg: #ffffff;
+  --backdrop: rgb(0 0 0 / 0.35);
+  --shadow: 0 4px 16px rgb(0 0 0 / 0.15);
   --error-bg: #fef3f2;
   --error-border: #fecdca;
   --warning-bg: #fff8e6;
@@ -31,6 +35,9 @@
     --selected: #1e2b3f;
     --accent: #4f8cf7;
     --error: #f97066;
+    --error-fg: #16191d;
+    --backdrop: rgb(0 0 0 / 0.55);
+    --shadow: 0 4px 16px rgb(0 0 0 / 0.5);
     --error-bg: #2b1715;
     --error-border: #6b2a24;
     --warning-bg: #2a2416;
@@ -105,6 +112,20 @@ button.secondary {
 
 button.secondary:disabled {
   opacity: 0.6;
+}
+
+button.danger {
+  background: var(--error);
+  color: var(--error-fg);
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 14px;
+  font-weight: 600;
+}
+
+button.danger:disabled {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 button.link {
@@ -324,7 +345,24 @@ button.link {
   padding: 0;
 }
 
+.activity-row {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  border-radius: 6px;
+}
+
+.activity-row:hover {
+  background: var(--hover);
+}
+
+.activity-row.selected {
+  background: var(--selected);
+}
+
 .activity {
+  flex: 1;
+  min-width: 0;
   display: flex;
   gap: 10px;
   align-items: flex-start;
@@ -332,16 +370,7 @@ button.link {
   text-align: left;
   background: none;
   border: 0;
-  border-radius: 6px;
   padding: 8px;
-}
-
-.activity:hover {
-  background: var(--hover);
-}
-
-.activity.selected {
-  background: var(--selected);
 }
 
 .swatch {
@@ -368,6 +397,122 @@ button.link {
 .activity-meta {
   color: var(--muted);
   font-size: 0.8125rem;
+}
+
+/*
+ * The row's ⋯ button. It sits over the end of the row, with the row's
+ * background, so it takes no room from the text. Hidden with opacity, so it
+ * stays focusable and the menu can be placed at it.
+ */
+.activity-actions {
+  position: absolute;
+  top: 6px;
+  right: 4px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 1.125rem;
+  line-height: 1.4;
+  opacity: 0;
+}
+
+.activity-row:hover .activity-actions {
+  background: var(--hover);
+}
+
+.activity-row.selected .activity-actions {
+  background: var(--selected);
+}
+
+.activity-row .activity-actions:hover {
+  background: var(--border);
+  color: var(--fg);
+}
+
+.activity-row:hover .activity-actions,
+.activity-row:focus-within .activity-actions,
+.activity-row.menu-open .activity-actions,
+.activity-row.selected .activity-actions {
+  opacity: 1;
+}
+
+/* Touch screens have no hover to reveal it, so it is always shown, beside the text. */
+@media (hover: none) {
+  .activity-actions {
+    position: static;
+    flex: none;
+    margin: 6px 4px 0 0;
+    opacity: 1;
+  }
+}
+
+/* A popover, so it is not clipped by the scrolling sidebar. ActivityList sets top and right. */
+.activity-menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  min-width: 140px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+}
+
+.activity-menu [role='menuitem'] {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  text-align: left;
+  color: var(--error);
+}
+
+.activity-menu [role='menuitem']:hover,
+.activity-menu [role='menuitem']:focus-visible {
+  background: var(--hover);
+}
+
+.confirm-dialog {
+  width: min(400px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  box-shadow: var(--shadow);
+}
+
+.confirm-dialog::backdrop {
+  background: var(--backdrop);
+}
+
+.confirm-dialog h2 {
+  margin: 0 0 12px;
+  font-size: 1.125rem;
+}
+
+.confirm-dialog p {
+  margin: 0 0 12px;
+  font-size: 0.875rem;
+}
+
+.confirm-activity {
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
 }
 
 .map {

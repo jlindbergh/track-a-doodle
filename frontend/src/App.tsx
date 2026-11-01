@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
 import { fetchActivities, type Activity } from './api';
 import ActivityList from './components/ActivityList';
+import ConfirmDelete from './components/ConfirmDelete';
 import ImportPanel from './components/ImportPanel';
 import TrackMap from './components/TrackMap';
 import { formatError } from './format';
@@ -26,8 +27,12 @@ export default function App() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Bumped after each import: refetches the list and the map tiles.
+  // Bumped after each import: refetches the list and fits the map to it.
   const [dataVersion, setDataVersion] = useState(0);
+  // Bumped whenever the user's data changes: refetches the map tiles.
+  const [tilesVersion, setTilesVersion] = useState(0);
+  // The activity the delete confirmation is shown for.
+  const [pendingDelete, setPendingDelete] = useState<Activity | null>(null);
   const [mapReady, setMapReady] = useState(false);
   // Where to move the map once it is ready, e.g. all tracks after loading.
   const [pendingFit, setPendingFit] = useState<BBox | null>(null);
@@ -68,6 +73,19 @@ export default function App() {
     fitBBox(activity.bbox);
   }
 
+  function handleImported() {
+    setDataVersion((v) => v + 1);
+    setTilesVersion((v) => v + 1);
+  }
+
+  // Drops the activity locally rather than refetching, so the map stays where it is.
+  function handleDeleted(id: string) {
+    setPendingDelete(null);
+    setActivities((list) => list.filter((a) => a.id !== id));
+    if (selectedId === id) setSelectedId(null);
+    setTilesVersion((v) => v + 1);
+  }
+
   return (
     <div className="app">
       <aside className="sidebar">
@@ -79,20 +97,33 @@ export default function App() {
             </button>
           )}
         </header>
-        <ImportPanel onImported={() => setDataVersion((v) => v + 1)} />
+        <ImportPanel onImported={handleImported} />
         {loadError && <p className="error">{loadError}</p>}
-        <ActivityList activities={activities} selectedId={selectedId} onSelect={handleSelect} />
+        <ActivityList
+          activities={activities}
+          selectedId={selectedId}
+          onSelect={handleSelect}
+          onRequestDelete={setPendingDelete}
+        />
       </aside>
       <main className="map">
         <TrackMap
           mapRef={mapRef}
           activities={activities}
-          dataVersion={dataVersion}
+          dataVersion={tilesVersion}
           selectedId={selectedId}
           onSelect={setSelectedId}
           onLoad={() => setMapReady(true)}
         />
       </main>
+      {pendingDelete && (
+        <ConfirmDelete
+          key={pendingDelete.id}
+          activity={pendingDelete}
+          onCancel={() => setPendingDelete(null)}
+          onDeleted={handleDeleted}
+        />
+      )}
     </div>
   );
 }
