@@ -1,26 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
 import { fetchActivities, type Activity } from './api';
+import { unionBBox, type BBox } from './bbox';
 import ActivityList, { type ActivityListHandle } from './components/ActivityList';
 import ConfirmDelete from './components/ConfirmDelete';
 import ImportPanel from './components/ImportPanel';
 import TrackMap, { type TrackMapHandle } from './components/TrackMap';
 import { formatError } from './format';
-
-type BBox = Activity['bbox'];
-
-function unionBBox(activities: Activity[]): BBox | null {
-  if (activities.length === 0) return null;
-  return activities.reduce<BBox>(
-    (acc, a) => [
-      Math.min(acc[0], a.bbox[0]),
-      Math.min(acc[1], a.bbox[1]),
-      Math.max(acc[2], a.bbox[2]),
-      Math.max(acc[3], a.bbox[3]),
-    ],
-    activities[0].bbox,
-  );
-}
 
 export default function App() {
   const mapRef = useRef<MapRef>(null);
