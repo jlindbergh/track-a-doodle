@@ -20,12 +20,12 @@ Other commands (`./dev.sh help` lists them all):
 | `./dev.sh down` | Stop the stack (keeps data) |
 | `./dev.sh logs [service]` | Follow logs |
 | `./dev.sh test` | Backend tests, including database tests, plus the frontend type check |
-| `./dev.sh import [-allow-duplicates]` | Batch-import GPX files from [samples/](samples/) |
+| `./dev.sh import [dir] [-allow-duplicates]` | Batch-import GPX files from `dir`, or [samples/](samples/) by default |
 | `./dev.sh reset-db` | Delete all data and recreate the database from [postgis/init/](postgis/init/), after asking |
 
 Frontend source is mounted into its container, so edits reload live. Backend changes need `./dev.sh`.
 
-To batch-import a folder, put your files in [samples/](samples/) (subfolders are fine) and run `./dev.sh import`.
+To batch-import a folder, run `./dev.sh import ~/path/to/gpx` (subfolders are searched too), or put the files in [samples/](samples/) and run `./dev.sh import`. Files already imported are skipped, so this is also an easy way to import everything again after `./dev.sh reset-db`. The folder must be one Docker can mount (on macOS, anything under your home folder is shared by default; `/tmp` is not).
 
 An activity's sport comes from the GPX track's `<type>`. Files without one get a sport from a word like "run", "ride" or "hike" in a track's `<name>`, and failing that in the filename (e.g. `Morning_Run.gpx`).
 
