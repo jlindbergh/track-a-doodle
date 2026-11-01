@@ -60,6 +60,9 @@ const activitiesLayer: LayerProps = {
 };
 
 const pointsSourceId = 'activity-points';
+
+// One color for all bubbles and dots, whatever their sports.
+const bubbleColor = '#334155';
 const clustersLayerId = 'activity-clusters';
 const pointLayerId = 'activity-point';
 
@@ -70,7 +73,7 @@ const clustersLayer: LayerProps = {
   maxzoom: bubbleMaxZoom,
   filter: ['has', 'point_count'],
   paint: {
-    'circle-color': '#334155',
+    'circle-color': bubbleColor,
     'circle-radius': ['step', ['get', 'point_count'], 14, 10, 18, 50, 24, 200, 30],
     'circle-stroke-color': '#ffffff',
     'circle-stroke-width': 2,
@@ -94,14 +97,14 @@ const clusterCountLayer: LayerProps = {
   paint: { 'text-color': '#ffffff', 'text-opacity': bubbleOpacity },
 };
 
-// An activity with no others nearby, in its sport's color.
+// An activity with no others nearby.
 const pointLayer: LayerProps = {
   id: pointLayerId,
   type: 'circle',
   maxzoom: bubbleMaxZoom,
   filter: ['!', ['has', 'point_count']],
   paint: {
-    'circle-color': lineColor,
+    'circle-color': bubbleColor,
     'circle-radius': 6,
     'circle-stroke-color': '#ffffff',
     'circle-stroke-width': 2,
