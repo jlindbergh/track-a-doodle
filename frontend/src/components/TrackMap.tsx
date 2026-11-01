@@ -71,10 +71,20 @@ interface Props {
   dataVersion: number;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
+  /** Scrolls the sidebar list to the activity with this id. */
+  onShowInList: (id: string) => void;
   onLoad: () => void;
 }
 
-export default function TrackMap({ mapRef, activities, dataVersion, selectedId, onSelect, onLoad }: Props) {
+export default function TrackMap({
+  mapRef,
+  activities,
+  dataVersion,
+  selectedId,
+  onSelect,
+  onShowInList,
+  onLoad,
+}: Props) {
   const { tiles } = useConfig();
   const [popup, setPopup] = useState<PopupInfo | null>(null);
   const [cursor, setCursor] = useState<string>('');
@@ -170,6 +180,7 @@ export default function TrackMap({ mapRef, activities, dataVersion, selectedId, 
             position={{ index: popup.index, count: popup.activityIds.length }}
             onPrev={() => step(-1)}
             onNext={() => step(1)}
+            onShowInList={() => onShowInList(popupActivity.id)}
           />
         </Popup>
       )}
