@@ -1,5 +1,5 @@
 import type { FeatureCollection, Point } from 'geojson';
-import type { FilterSpecification } from 'maplibre-gl';
+import type { FilterSpecification, GeoJSONSource, MapGeoJSONFeature } from 'maplibre-gl';
 import { useImperativeHandle, useMemo, useState, type Ref, type RefObject } from 'react';
 import Map, {
   Layer,
@@ -11,6 +11,7 @@ import Map, {
   type MapRef,
 } from 'react-map-gl/maplibre';
 import type { Activity } from '../api';
+import { unionBBox, type BBox } from '../bbox';
 import { useConfig } from '../config';
 import { defaultSportColor, sportStyles } from '../format';
 import ActivityPopup from './ActivityPopup';
@@ -147,6 +148,8 @@ interface Props {
   onSelect: (id: string | null) => void;
   /** Scrolls the sidebar list to the activity with this id. */
   onShowInList: (id: string) => void;
+  /** Moves the map to show bbox. */
+  onFitBounds: (bbox: BBox) => void;
   onLoad: () => void;
 }
 
@@ -158,6 +161,7 @@ export default function TrackMap({
   selectedId,
   onSelect,
   onShowInList,
+  onFitBounds,
   onLoad,
 }: Props) {
   const { tiles } = useConfig();
@@ -184,10 +188,29 @@ export default function TrackMap({
     },
   }));
 
+  // A bubble zooms to all its activities; a lone activity's dot zooms to it and selects it.
+  async function handleBubbleClick(bubble: MapGeoJSONFeature) {
+    setPopup(null);
+    if (bubble.properties.cluster) {
+      const source = mapRef.current?.getSource<GeoJSONSource>(pointsSourceId);
+      // Rejects if the bubbles were rebuilt since, e.g. after a delete; the click is then dropped.
+      const leaves = await source?.getClusterLeaves(bubble.properties.cluster_id, Infinity, 0).catch(() => null);
+      const ids = new Set(leaves?.map((f) => String(f.properties?.id)));
+      const bbox = unionBBox(activities.filter((a) => ids.has(a.id)));
+      if (bbox) onFitBounds(bbox);
+      return;
+    }
+    const activity = activities.find((a) => a.id === String(bubble.properties.id));
+    if (!activity) return;
+    onSelect(activity.id);
+    onFitBounds(activity.bbox);
+  }
+
   function handleClick(e: MapLayerMouseEvent) {
+    const map = mapRef.current;
     const { x, y } = e.point;
     const features =
-      mapRef.current?.queryRenderedFeatures(
+      map?.queryRenderedFeatures(
         [
           [x - clickTolerancePx, y - clickTolerancePx],
           [x + clickTolerancePx, y + clickTolerancePx],
@@ -197,6 +220,12 @@ export default function TrackMap({
     // A track can come back once per tile it crosses.
     const ids = new Set(features.map((f) => String(f.properties.id)));
     const hits = activities.filter((a) => ids.has(a.id)).sort(compareByStart);
+    // Bubbles take the click until the tracks drawn over them are fully shown.
+    const bubble = map?.queryRenderedFeatures(e.point, { layers: [clustersLayerId, pointLayerId] })[0];
+    if (bubble && (hits.length === 0 || map!.getZoom() < tracksOpaqueZoom)) {
+      void handleBubbleClick(bubble);
+      return;
+    }
     if (hits.length === 0) {
       setPopup(null);
       onSelect(null);
@@ -226,7 +255,7 @@ export default function TrackMap({
       initialViewState={{ longitude: 15, latitude: 62, zoom: 4 }}
       mapStyle={basemapStyle}
       onLoad={onLoad}
-      interactiveLayerIds={[activitiesLayerId]}
+      interactiveLayerIds={[activitiesLayerId, clustersLayerId, pointLayerId]}
       onClick={handleClick}
       onMouseEnter={() => setCursor('pointer')}
       onMouseLeave={() => setCursor('')}
