@@ -4,7 +4,7 @@ import { fetchActivities, type Activity } from './api';
 import ActivityList, { type ActivityListHandle } from './components/ActivityList';
 import ConfirmDelete from './components/ConfirmDelete';
 import ImportPanel from './components/ImportPanel';
-import TrackMap from './components/TrackMap';
+import TrackMap, { type TrackMapHandle } from './components/TrackMap';
 import { formatError } from './format';
 
 type BBox = Activity['bbox'];
@@ -25,6 +25,7 @@ function unionBBox(activities: Activity[]): BBox | null {
 export default function App() {
   const mapRef = useRef<MapRef>(null);
   const listRef = useRef<ActivityListHandle>(null);
+  const trackMapRef = useRef<TrackMapHandle>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -69,7 +70,9 @@ export default function App() {
     );
   }
 
+  // From the list. The map moves to the activity, likely away from an open popup, so it's closed.
   function handleSelect(activity: Activity) {
+    trackMapRef.current?.closePopup();
     setSelectedId(activity.id);
     fitBBox(activity.bbox);
   }
@@ -110,6 +113,7 @@ export default function App() {
       </aside>
       <main className="map">
         <TrackMap
+          ref={trackMapRef}
           mapRef={mapRef}
           activities={activities}
           dataVersion={tilesVersion}
