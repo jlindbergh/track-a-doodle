@@ -72,6 +72,8 @@ services:
     build: ./frontend
     environment:
       API_PROXY_TARGET: http://backend:8080
+      # File events don't reach the container through the bind mount (see vite.config.ts).
+      VITE_USE_POLLING: "1"
     volumes:
       # The whole module is mounted for hot reload, including vite.config.ts.
       # node_modules stays the image's (installed for Linux) via an anonymous
