@@ -1,3 +1,4 @@
+import type { FilterSpecification } from 'maplibre-gl';
 import { useState, type RefObject } from 'react';
 import Map, {
   Layer,
@@ -25,6 +26,9 @@ const lineColor = [
 ] as unknown as string;
 
 const lineWidth = ['interpolate', ['linear'], ['zoom'], 5, 1.5, 12, 3, 16, 5] as unknown as number;
+
+// The dark outline around the selected activity, a bit wider than lineWidth at every zoom.
+const selectedCasingWidth = ['interpolate', ['linear'], ['zoom'], 5, 5, 12, 7.5, 16, 9.5] as unknown as number;
 
 const lineLayout = { 'line-cap': 'round', 'line-join': 'round' } as const;
 
@@ -72,6 +76,7 @@ export default function TrackMap({ mapRef, activities, dataVersion, selectedId, 
   }
 
   const popupActivity = popup && activities.find((a) => a.id === popup.activityId);
+  const selectedFilter: FilterSpecification = ['==', ['get', 'id'], selectedId ?? ''];
 
   return (
     <Map
@@ -97,14 +102,22 @@ export default function TrackMap({ mapRef, activities, dataVersion, selectedId, 
         maxzoom={tiles.maxZoom}
       >
         <Layer {...activitiesLayer} source-layer={tiles.sourceLayer} />
+        {/* Declared after the activities layer, so the selected activity is drawn on top. */}
         <Layer
-          id="activities-selected"
+          id="activities-selected-casing"
           type="line"
           source-layer={tiles.sourceLayer}
-          filter={['==', ['get', 'id'], selectedId ?? '']}
+          filter={selectedFilter}
           layout={lineLayout}
-          paint={{ 'line-color': '#111', 'line-width': 6, 'line-opacity': 0.9 }}
-          beforeId={activitiesLayerId}
+          paint={{ 'line-color': '#111', 'line-width': selectedCasingWidth, 'line-opacity': 0.9 }}
+        />
+        <Layer
+          id="activities-selected-line"
+          type="line"
+          source-layer={tiles.sourceLayer}
+          filter={selectedFilter}
+          layout={lineLayout}
+          paint={{ 'line-color': lineColor, 'line-width': lineWidth }}
         />
       </Source>
       {popup && popupActivity && (
