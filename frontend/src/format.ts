@@ -49,6 +49,8 @@ export const sportStyles: Record<string, { label: string; color: string }> = {
   cross_country_skiing: { label: 'Cross-country skiing', color: '#b5179e' },
   downhill_skiing: { label: 'Downhill skiing', color: '#f2a900' },
   skating: { label: 'Skating', color: '#1d3557' },
+  stand_up_paddleboarding: { label: 'Stand up paddleboarding', color: '#ff6f91' },
+  rowing: { label: 'Rowing', color: '#606c38' },
 };
 export const defaultSportColor = '#7d5ba6';
 
