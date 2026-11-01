@@ -5,7 +5,7 @@
 -- compose network; the backend authenticates the request and sets user_id
 -- itself, ignoring whatever the browser sent. No user_id means no tile.
 
-CREATE FUNCTION activities_tiles(z integer, x integer, y integer, query_params json)
+CREATE OR REPLACE FUNCTION activities_tiles(z integer, x integer, y integer, query_params json)
 RETURNS bytea
 LANGUAGE plpgsql
 STABLE
@@ -45,6 +45,10 @@ BEGIN
           FROM activities a
          WHERE a.user_id = uid
            AND a.geom_3857 && ST_Expand(bbox, (ST_XMax(bbox) - ST_XMin(bbox)) * 64 / 4096)
+         -- The map draws features in tile order, so this puts the most
+         -- recent activity on top. Keep in sync with the popup's order in
+         -- frontend/src/components/TrackMap.tsx.
+         ORDER BY a.started_at NULLS FIRST, a.id
       ) t
      WHERE t.geom IS NOT NULL;
 
