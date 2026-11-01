@@ -156,13 +156,22 @@ func TestParseInvalidTimestamps(t *testing.T) {
 
 func TestNormalizeSport(t *testing.T) {
 	for in, want := range map[string]string{
-		"":               "unknown",
-		" Running ":      "running",
-		"Run":            "running",
-		"VirtualRide":    "virtual_ride",
-		"indoor_cycling": "indoor_cycling",
-		"Indoor Rowing":  "indoor_rowing",
-		"9":              "running",
+		"":                              "unknown",
+		" Running ":                     "running",
+		"Run":                           "running",
+		"VirtualRide":                   "virtual_ride",
+		"indoor_cycling":                "indoor_cycling",
+		"Indoor Rowing":                 "indoor_rowing",
+		"9":                             "running",
+		"NordicSki":                     "cross_country_skiing",
+		"cross_country_skiing_ws":       "cross_country_skiing",
+		"skate_skiing":                  "cross_country_skiing",
+		"AlpineSki":                     "downhill_skiing",
+		"resort_skiing_snowboarding_ws": "downhill_skiing",
+		"IceSkate":                      "skating",
+		"InlineSkate":                   "skating",
+		"skating_ws":                    "skating",
+		"BackcountrySki":                "backcountry_ski",
 	} {
 		if got := normalizeSport(in); got != want {
 			t.Errorf("normalizeSport(%q) = %q, want %q", in, got, want)
@@ -172,16 +181,26 @@ func TestNormalizeSport(t *testing.T) {
 
 func TestSportFromName(t *testing.T) {
 	for in, want := range map[string]string{
-		"":                    "unknown",
-		"Morning Run":         "running",
-		"Afternoon Ride":      "cycling",
-		"Stockholm - Cycling": "cycling",
-		"Morning_Run":         "running",
-		"Hike!":               "hiking",
-		"Run, running":        "running",
-		"Brunch":              "unknown",
-		"Walk then run":       "unknown",
-		"activity_123456":     "unknown",
+		"":                                 "unknown",
+		"Morning Run":                      "running",
+		"Afternoon Ride":                   "cycling",
+		"Stockholm - Cycling":              "cycling",
+		"Morning_Run":                      "running",
+		"Hike!":                            "hiking",
+		"Run, running":                     "running",
+		"Brunch":                           "unknown",
+		"Walk then run":                    "unknown",
+		"activity_123456":                  "unknown",
+		"Morning Nordic Ski":               "cross_country_skiing",
+		"Åre Cross Country Classic Skiing": "cross_country_skiing",
+		"Skate Skiing":                     "cross_country_skiing",
+		"Afternoon Alpine Ski":             "downhill_skiing",
+		"Sälen Resort Skiing":              "downhill_skiing",
+		"Evening Ice Skate":                "skating",
+		"Skating on the lake":              "skating",
+		"Morning Ski":                      "unknown",
+		"Cross country run":                "running",
+		"Skate ski then skate":             "unknown",
 	} {
 		if got := sportFromName(in); got != want {
 			t.Errorf("sportFromName(%q) = %q, want %q", in, got, want)
