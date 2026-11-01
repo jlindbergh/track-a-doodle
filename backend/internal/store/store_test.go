@@ -195,3 +195,41 @@ func TestInsertActivityOtherUsersAreIgnored(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteActivity(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	owner := testUser(t, s)
+	other := testUser(t, s)
+	id := insert(t, s, owner.ID, newActivity(0, 3600, 1), nil).New.ID
+
+	// In order: each step sees what the previous ones left.
+	steps := []struct {
+		name       string
+		userID     string
+		id         string
+		want       bool
+		ownerKeeps int
+	}{
+		{"someone else's", other.ID, id, false, 1},
+		{"unknown id", owner.ID, "00000000-0000-0000-0000-000000000000", false, 1},
+		{"own", owner.ID, id, true, 0},
+		{"already deleted", owner.ID, id, false, 0},
+	}
+	for _, st := range steps {
+		got, err := s.DeleteActivity(ctx, st.userID, st.id)
+		if err != nil {
+			t.Fatalf("%s: %v", st.name, err)
+		}
+		if got != st.want {
+			t.Errorf("%s: deleted = %v, want %v", st.name, got, st.want)
+		}
+		list, err := s.ListActivities(ctx, owner.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(list) != st.ownerKeeps {
+			t.Fatalf("%s: owner has %d activities, want %d", st.name, len(list), st.ownerKeeps)
+		}
+	}
+}

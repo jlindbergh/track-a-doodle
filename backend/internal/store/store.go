@@ -256,3 +256,14 @@ func (s *Store) ListActivities(ctx context.Context, userID string) ([]activity.S
 	}
 	return list, nil
 }
+
+// DeleteActivity deletes userID's activity with the given id. It reports
+// whether there was one: an activity that belongs to someone else is never
+// deleted and is reported the same way as one that doesn't exist.
+func (s *Store) DeleteActivity(ctx context.Context, userID, id string) (bool, error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM activities WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		return false, fmt.Errorf("delete activity: %w", err)
+	}
+	return tag.RowsAffected() == 1, nil
+}

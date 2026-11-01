@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"time"
 
@@ -53,6 +54,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/me", auth.Require(s.me))
 	mux.HandleFunc("GET /api/activities", auth.Require(s.listActivities))
 	mux.HandleFunc("POST /api/activities/import", auth.Require(s.importActivities))
+	mux.HandleFunc("DELETE /api/activities/{id}", auth.Require(s.deleteActivity))
 	mux.HandleFunc("GET "+tilesPath, auth.Require(s.tile))
 	return mux
 }
@@ -134,6 +136,36 @@ func (s *Server) importActivities(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.writeJSON(w, r, http.StatusOK, results)
+}
+
+// deleteActivity deletes one of the user's activities. Another user's
+// activity gets the same 404 as one that doesn't exist, so ids can't be
+// probed.
+func (s *Server) deleteActivity(w http.ResponseWriter, r *http.Request) {
+	u, _ := auth.UserFrom(r.Context())
+	id := r.PathValue("id")
+	// The database would reject a malformed id with an error, not "no rows".
+	if !isUUID(id) {
+		http.Error(w, "activity not found", http.StatusNotFound)
+		return
+	}
+	deleted, err := s.store.DeleteActivity(r.Context(), u.ID, id)
+	if err != nil {
+		s.serverError(w, r, err)
+		return
+	}
+	if !deleted {
+		http.Error(w, "activity not found", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// isUUID reports whether s is a UUID in the usual hyphenated form.
+func isUUID(s string) bool {
+	return uuidPattern.MatchString(s)
 }
 
 // tile proxies a vector tile request to Martin for the authenticated user.
