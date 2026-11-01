@@ -46,6 +46,9 @@ export const sportStyles: Record<string, { label: string; color: string }> = {
   walking: { label: 'Walking', color: '#76b041' },
   hiking: { label: 'Hiking', color: '#a1662f' },
   swimming: { label: 'Swimming', color: '#17bebb' },
+  cross_country_skiing: { label: 'Cross-country skiing', color: '#b5179e' },
+  downhill_skiing: { label: 'Downhill skiing', color: '#f2a900' },
+  skating: { label: 'Skating', color: '#1d3557' },
 };
 export const defaultSportColor = '#7d5ba6';
 
