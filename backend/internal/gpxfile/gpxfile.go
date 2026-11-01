@@ -227,6 +227,12 @@ var sportAliases = map[string]string{
 	"ice_skating":    activity.SportSkating,
 	"inline_skate":   activity.SportSkating,
 	"inline_skating": activity.SportSkating,
+
+	"open_water_swimming":        activity.SportSwimming,
+	"rowing_v2":                  activity.SportRowing,
+	"stand_up_paddling":          activity.SportStandUpPaddleboarding,
+	"stand_up_paddleboarding_v2": activity.SportStandUpPaddleboarding,
+	"sup":                        activity.SportStandUpPaddleboarding,
 }
 
 // normalizeSport lowercases a sport type, turning CamelCase ("VirtualRide",
@@ -258,23 +264,28 @@ func normalizeSport(s string) string {
 // before sportWords, so "Skate Skiing" is cross-country skiing rather than
 // skating. "Ski" on its own could be either kind of skiing, so it isn't a word.
 var sportPhrases = map[string]string{
-	"nordic ski":           activity.SportCrossCountrySkiing,
-	"nordic skiing":        activity.SportCrossCountrySkiing,
-	"cross country ski":    activity.SportCrossCountrySkiing,
-	"cross country skiing": activity.SportCrossCountrySkiing,
-	"classic ski":          activity.SportCrossCountrySkiing,
-	"classic skiing":       activity.SportCrossCountrySkiing,
-	"skate ski":            activity.SportCrossCountrySkiing,
-	"skate skiing":         activity.SportCrossCountrySkiing,
-	"alpine ski":           activity.SportDownhillSkiing,
-	"alpine skiing":        activity.SportDownhillSkiing,
-	"downhill ski":         activity.SportDownhillSkiing,
-	"downhill skiing":      activity.SportDownhillSkiing,
-	"resort skiing":        activity.SportDownhillSkiing,
-	"ice skate":            activity.SportSkating,
-	"ice skating":          activity.SportSkating,
-	"inline skate":         activity.SportSkating,
-	"inline skating":       activity.SportSkating,
+	"nordic ski":              activity.SportCrossCountrySkiing,
+	"nordic skiing":           activity.SportCrossCountrySkiing,
+	"cross country ski":       activity.SportCrossCountrySkiing,
+	"cross country skiing":    activity.SportCrossCountrySkiing,
+	"classic ski":             activity.SportCrossCountrySkiing,
+	"classic skiing":          activity.SportCrossCountrySkiing,
+	"skate ski":               activity.SportCrossCountrySkiing,
+	"skate skiing":            activity.SportCrossCountrySkiing,
+	"alpine ski":              activity.SportDownhillSkiing,
+	"alpine skiing":           activity.SportDownhillSkiing,
+	"downhill ski":            activity.SportDownhillSkiing,
+	"downhill skiing":         activity.SportDownhillSkiing,
+	"resort skiing":           activity.SportDownhillSkiing,
+	"ice skate":               activity.SportSkating,
+	"ice skating":             activity.SportSkating,
+	"inline skate":            activity.SportSkating,
+	"inline skating":          activity.SportSkating,
+	"stand up paddle":         activity.SportStandUpPaddleboarding,
+	"stand up paddling":       activity.SportStandUpPaddleboarding,
+	"stand up paddleboarding": activity.SportStandUpPaddleboarding,
+	"paddle board":            activity.SportStandUpPaddleboarding,
+	"paddle boarding":         activity.SportStandUpPaddleboarding,
 }
 
 // maxPhraseWords is the number of words in the longest of sportPhrases.
@@ -299,6 +310,11 @@ var sportWords = map[string]string{
 	"swimming": activity.SportSwimming,
 	"skate":    activity.SportSkating,
 	"skating":  activity.SportSkating,
+	"rowing":   activity.SportRowing,
+	"sup":      activity.SportStandUpPaddleboarding,
+	// Not "paddle" on its own: it could as well be a kayak or a canoe.
+	"paddleboard":    activity.SportStandUpPaddleboarding,
+	"paddleboarding": activity.SportStandUpPaddleboarding,
 }
 
 // guessSport looks for a sport in the names of a file's tracks, in order,

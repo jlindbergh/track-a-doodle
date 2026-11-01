@@ -171,6 +171,11 @@ func TestNormalizeSport(t *testing.T) {
 		"IceSkate":                      "skating",
 		"InlineSkate":                   "skating",
 		"skating_ws":                    "skating",
+		"open_water_swimming":           "swimming",
+		"Rowing":                        "rowing",
+		"rowing_v2":                     "rowing",
+		"StandUpPaddling":               "stand_up_paddleboarding",
+		"stand_up_paddleboarding_v2":    "stand_up_paddleboarding",
 		"BackcountrySki":                "backcountry_ski",
 	} {
 		if got := normalizeSport(in); got != want {
@@ -201,6 +206,12 @@ func TestSportFromName(t *testing.T) {
 		"Morning Ski":                      "unknown",
 		"Cross country run":                "running",
 		"Skate ski then skate":             "unknown",
+		"Morning Stand Up Paddle":          "stand_up_paddleboarding",
+		"Evening SUP":                      "stand_up_paddleboarding",
+		"Paddle board tour":                "stand_up_paddleboarding",
+		"Kayak paddle":                     "unknown",
+		"Lunch Rowing":                     "rowing",
+		"Open water swim":                  "swimming",
 	} {
 		if got := sportFromName(in); got != want {
 			t.Errorf("sportFromName(%q) = %q, want %q", in, got, want)
