@@ -191,7 +191,8 @@ func (a Activity) WKT() string {
 }
 
 // sportAliases maps the activity types written by common exporters to the
-// sport ids in package activity. Strava's older exports use numeric codes.
+// sport ids in package activity. Strava's older exports use numeric codes;
+// Garmin's types sometimes end in "_ws" (winter sports).
 var sportAliases = map[string]string{
 	"1":               activity.SportCycling,
 	"9":               activity.SportRunning,
@@ -206,6 +207,26 @@ var sportAliases = map[string]string{
 	"walk":            activity.SportWalking,
 	"hike":            activity.SportHiking,
 	"swim":            activity.SportSwimming,
+
+	"nordic_ski":              activity.SportCrossCountrySkiing,
+	"nordic_skiing":           activity.SportCrossCountrySkiing,
+	"cross_country_skiing_ws": activity.SportCrossCountrySkiing,
+	"classic_skiing":          activity.SportCrossCountrySkiing,
+	// Cross-country skiing in the skate technique, not skating.
+	"skate_skiing":    activity.SportCrossCountrySkiing,
+	"skate_skiing_ws": activity.SportCrossCountrySkiing,
+
+	"alpine_ski":                    activity.SportDownhillSkiing,
+	"alpine_skiing":                 activity.SportDownhillSkiing,
+	"resort_skiing":                 activity.SportDownhillSkiing,
+	"resort_skiing_snowboarding":    activity.SportDownhillSkiing,
+	"resort_skiing_snowboarding_ws": activity.SportDownhillSkiing,
+
+	"skating_ws":     activity.SportSkating,
+	"ice_skate":      activity.SportSkating,
+	"ice_skating":    activity.SportSkating,
+	"inline_skate":   activity.SportSkating,
+	"inline_skating": activity.SportSkating,
 }
 
 // normalizeSport lowercases a sport type, turning CamelCase ("VirtualRide",
@@ -233,6 +254,32 @@ func normalizeSport(s string) string {
 	return s
 }
 
+// sportPhrases maps phrases in activity names to sport ids. They are matched
+// before sportWords, so "Skate Skiing" is cross-country skiing rather than
+// skating. "Ski" on its own could be either kind of skiing, so it isn't a word.
+var sportPhrases = map[string]string{
+	"nordic ski":           activity.SportCrossCountrySkiing,
+	"nordic skiing":        activity.SportCrossCountrySkiing,
+	"cross country ski":    activity.SportCrossCountrySkiing,
+	"cross country skiing": activity.SportCrossCountrySkiing,
+	"classic ski":          activity.SportCrossCountrySkiing,
+	"classic skiing":       activity.SportCrossCountrySkiing,
+	"skate ski":            activity.SportCrossCountrySkiing,
+	"skate skiing":         activity.SportCrossCountrySkiing,
+	"alpine ski":           activity.SportDownhillSkiing,
+	"alpine skiing":        activity.SportDownhillSkiing,
+	"downhill ski":         activity.SportDownhillSkiing,
+	"downhill skiing":      activity.SportDownhillSkiing,
+	"resort skiing":        activity.SportDownhillSkiing,
+	"ice skate":            activity.SportSkating,
+	"ice skating":          activity.SportSkating,
+	"inline skate":         activity.SportSkating,
+	"inline skating":       activity.SportSkating,
+}
+
+// maxPhraseWords is the number of words in the longest of sportPhrases.
+const maxPhraseWords = 3
+
 // sportWords maps words in activity names, as Strava and Garmin write them
 // ("Morning Run", "Stockholm Cycling"), to sport ids.
 var sportWords = map[string]string{
@@ -250,6 +297,8 @@ var sportWords = map[string]string{
 	"hiking":   activity.SportHiking,
 	"swim":     activity.SportSwimming,
 	"swimming": activity.SportSwimming,
+	"skate":    activity.SportSkating,
+	"skating":  activity.SportSkating,
 }
 
 // guessSport looks for a sport in the names of a file's tracks, in order,
@@ -263,14 +312,15 @@ func guessSport(trackNames []string, filename string) string {
 	return activity.SportUnknown
 }
 
-// sportFromName returns the sport named by a word in name, or SportUnknown
-// if no word does, or if words name different sports.
+// sportFromName returns the sport named by a phrase or word in name, or
+// SportUnknown if none does, or if they name different sports.
 func sportFromName(name string) string {
 	words := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool { return !unicode.IsLetter(r) })
 	found := activity.SportUnknown
-	for _, w := range words {
-		sport, ok := sportWords[w]
-		if !ok {
+	for i := 0; i < len(words); {
+		sport, n := sportAt(words[i:])
+		i += n
+		if sport == "" {
 			continue
 		}
 		if found != activity.SportUnknown && sport != found {
@@ -279,4 +329,16 @@ func sportFromName(name string) string {
 		found = sport
 	}
 	return found
+}
+
+// sportAt returns the sport named by the longest phrase, or else the word, at
+// the start of words, and how many words that took. It returns "" and 1 if
+// there is neither.
+func sportAt(words []string) (string, int) {
+	for n := min(maxPhraseWords, len(words)); n > 1; n-- {
+		if sport, ok := sportPhrases[strings.Join(words[:n], " ")]; ok {
+			return sport, n
+		}
+	}
+	return sportWords[words[0]], 1
 }
