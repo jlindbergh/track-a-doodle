@@ -23,7 +23,8 @@ Other commands (`./dev.sh help` lists them all):
 | `./dev.sh logs [service]` | Follow logs |
 | `./dev.sh test` | Backend tests, including database tests, plus the frontend type check |
 | `./dev.sh import [dir] [-user email] [-allow-duplicates]` | Batch-import GPX files from `dir`, or [samples/](samples/) by default, for a user who has signed up |
-| `./dev.sh reset-db` | Delete all data and recreate the database from [postgis/init/](postgis/init/), after asking |
+| `./dev.sh migrate [cmd]` | Run [goose](https://github.com/pressly/goose) on the database, e.g. `status`, or `create add_thing sql` for a new migration |
+| `./dev.sh reset-db` | Delete all data and recreate the database, after asking |
 
 Frontend source is mounted into its container, so edits reload live. Backend changes need `./dev.sh`.
 
@@ -67,16 +68,13 @@ Values that more than one layer depends on are defined in the backend and served
 Connect with psql: `psql postgres://trackadoodle_owner:dev-owner-pw@localhost:5433/trackadoodle`.
 Defaults can be overridden with environment variables or a `.env` file (see [compose.yaml](compose.yaml)).
 
-### Resetting the database
+### Database migrations
 
-The SQL in [postgis/init/](postgis/init/) only runs when the database volume is first created. After changing it, run `./dev.sh reset-db`, which deletes all imported data.
+The schema lives in [postgis/migrations/](postgis/migrations/) as SQL files applied by [goose](https://github.com/pressly/goose) (MIT). The `migrate` service runs them as the schema owner whenever the stack starts, before Martin and the backend; the backend only connects as `trackadoodle_app`, which can read and write rows but not change the schema. Only the database roles are still created by [postgis/init/](postgis/init/), when the volume is first created.
 
-To keep your data across the change that added accounts, apply it to the existing database instead:
+To change the schema, add a migration with `./dev.sh migrate create describe_change sql`, write the SQL under `-- +goose Up` (and `-- +goose Down`), then run `./dev.sh up` or `./dev.sh migrate`. Never edit a migration that has already been applied. `./dev.sh reset-db` is only needed to start over.
 
-```bash
-docker compose exec -T db psql -U trackadoodle_owner -d trackadoodle -c "ALTER TABLE users ADD COLUMN password_hash text, ADD COLUMN email_verified_at timestamptz;"
-docker compose exec -T db psql -U trackadoodle_owner -d trackadoodle < postgis/init/040_auth.sql
-```
+Databases created before migrations existed are adopted as they are: the first three migrations only create what is missing.
 
 Activities imported in dev mode belong to `DEV_USER_EMAIL`, which has no password. To see them after signing up, import the files again with `-user`.
 

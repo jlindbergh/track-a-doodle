@@ -11,7 +11,7 @@ import (
 	"github.com/jlindbergh/track-a-doodle/backend/internal/gpxfile"
 )
 
-// These tests need a database with the schema from postgis/init, e.g.
+// These tests need a database migrated with postgis/migrations, e.g.
 //
 //	TEST_DATABASE_URL=postgres://trackadoodle_app:dev-app-pw@db:5432/trackadoodle go test ./...
 //

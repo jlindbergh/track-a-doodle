@@ -18,7 +18,7 @@ const (
 	// martinSource is the id of the activities source in mapserver/config.yaml.
 	martinSource = "activities"
 	// tileLayer is the name of the layer in the tiles, set by ST_AsMVT in
-	// postgis/init/030_tiles.sql.
+	// postgis/migrations/00002_tiles.sql.
 	tileLayer = "activities"
 )
 

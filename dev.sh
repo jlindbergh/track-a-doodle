@@ -28,8 +28,11 @@ Usage: ./dev.sh [command]
              Batch-import GPX files from dir (default samples/), searched
              recursively, e.g. ./dev.sh import ~/gpx -user you@example.com.
              The user must have signed up (unless AUTH_MODE=dev).
-  reset-db   Delete ALL data and recreate the database from postgis/init.
-             Needed after changing the SQL there. Asks for confirmation.
+  migrate [cmd]
+             Run goose against the database, e.g. ./dev.sh migrate status.
+             Without cmd, applies pending migrations from postgis/migrations
+             (up does this too). New migration: ./dev.sh migrate create name sql
+  reset-db   Delete ALL data and recreate the database. Asks for confirmation.
   help       Show this help.
 EOF
 }
@@ -60,7 +63,7 @@ wait_for() {
 
 cmd_up() {
   require_docker
-  log "Building images (postgis, backend, frontend) and pulling martin and mailpit"
+  log "Building images (postgis, migrate, backend, frontend) and pulling martin and mailpit"
   docker compose pull --quiet martin mailpit
   docker compose build
   log "Recreating containers"
@@ -114,6 +117,19 @@ cmd_import() {
   fi
 }
 
+# cmd_migrate [goose args...]: runs goose in the migrate image. "create"
+# writes the new file into postgis/migrations through a bind mount.
+cmd_migrate() {
+  require_docker
+  docker compose build --quiet migrate
+  if [ "${1:-}" = "create" ]; then
+    docker compose run --rm --no-deps --user "$(id -u):$(id -g)" \
+      -v "$PWD/postgis/migrations":/migrations migrate "$@"
+  else
+    docker compose run --rm migrate "$@"
+  fi
+}
+
 cmd_reset_db() {
   require_docker
   echo "This deletes ALL users and imported activities in the local database."
@@ -134,6 +150,7 @@ case "${1:-up}" in
   logs) require_docker; shift; docker compose logs --follow --tail 100 "$@" ;;
   test) cmd_test ;;
   import) shift; cmd_import "$@" ;;
+  migrate) shift; cmd_migrate "$@" ;;
   reset-db) cmd_reset_db ;;
   help | -h | --help) usage ;;
   *)

@@ -5,6 +5,8 @@
 -- compose network; the backend authenticates the request and sets user_id
 -- itself, ignoring whatever the browser sent. No user_id means no tile.
 
+-- +goose Up
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION activities_tiles(z integer, x integer, y integer, query_params json)
 RETURNS bytea
 LANGUAGE plpgsql
@@ -55,6 +57,7 @@ BEGIN
     RETURN mvt;
 END;
 $$;
+-- +goose StatementEnd
 
 REVOKE ALL ON FUNCTION activities_tiles(integer, integer, integer, json) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION activities_tiles(integer, integer, integer, json) TO trackadoodle_martin;

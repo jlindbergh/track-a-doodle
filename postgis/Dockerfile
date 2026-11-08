@@ -8,4 +8,6 @@ RUN apt-get update \
       postgresql-17-postgis-3-scripts \
  && rm -rf /var/lib/apt/lists/*
 
+# Only the roles are created here, when the volume is first created. The
+# schema comes from migrations/, applied by the migrate service.
 COPY init/ /docker-entrypoint-initdb.d/
