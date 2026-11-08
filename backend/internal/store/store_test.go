@@ -154,6 +154,37 @@ func TestInsertActivitySameFile(t *testing.T) {
 	}
 }
 
+func TestInsertActivitySameExternalID(t *testing.T) {
+	s := testStore(t)
+	alice := testUser(t, s)
+	bob := testUser(t, s)
+	garmin := func(startOffset time.Duration, source, externalID string) NewActivity {
+		na := newActivity(startOffset, 3600, 1)
+		na.Source, na.ExternalID = source, externalID
+		return na
+	}
+	insert(t, s, alice.ID, garmin(0, "garmin", "123"), nil)
+
+	// A different file for the same Garmin activity, e.g. downloaded again.
+	if got := insert(t, s, alice.ID, garmin(time.Hour, "garmin", "123"), nil); got.Status != SameFile {
+		t.Errorf("same source and external id: status = %v, want SameFile", got.Status)
+	}
+	for name, tt := range map[string]struct {
+		userID string
+		na     NewActivity
+	}{
+		"other id":     {alice.ID, garmin(2*time.Hour, "garmin", "456")},
+		"other source": {alice.ID, garmin(3*time.Hour, "strava", "123")},
+		"other user":   {bob.ID, garmin(0, "garmin", "123")},
+		"no id":        {alice.ID, garmin(4*time.Hour, "fit", "")},
+		"no id again":  {alice.ID, garmin(5*time.Hour, "fit", "")},
+	} {
+		if got := insert(t, s, tt.userID, tt.na, nil); got.Status != Inserted {
+			t.Errorf("%s: status = %v, want Inserted", name, got.Status)
+		}
+	}
+}
+
 func TestListActivities(t *testing.T) {
 	s := testStore(t)
 	alice := testUser(t, s)
