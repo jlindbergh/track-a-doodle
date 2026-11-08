@@ -62,6 +62,7 @@ func newActivity(startOffset time.Duration, durationS int, lengthFactor float64)
 			Name: "Run", Sport: "running", StartedAt: &start, DurationS: &durationS,
 			Lines: [][]activity.LonLat{line},
 		},
+		Source:         "gpx",
 		SourceFilename: "run.gpx",
 		ContentSHA256:  rand.Text(), // a different file each time unless set
 	}

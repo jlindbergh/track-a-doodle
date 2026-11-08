@@ -103,7 +103,7 @@ export default function ActivityList({ activities, selectedId, onSelect, onReque
   }
 
   if (activities.length === 0) {
-    return <p className="empty">No activities yet. Import some GPX files to get started.</p>;
+    return <p className="empty">No activities yet. Import some GPX or FIT files to get started.</p>;
   }
   return (
     <>

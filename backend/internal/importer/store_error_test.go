@@ -20,8 +20,8 @@ func (failingStore) InsertActivity(context.Context, string, store.NewActivity, *
 	return store.InsertResult{}, errors.New("connection refused")
 }
 
-func TestImportGPXStoreError(t *testing.T) {
-	res, err := New(failingStore{}).ImportGPX(context.Background(), "user", "dir/run.gpx", []byte(validGPX), Options{})
+func TestImportStoreError(t *testing.T) {
+	res, err := New(failingStore{}).Import(context.Background(), "user", "dir/run.gpx", []byte(validGPX), Options{})
 	if err == nil || !strings.Contains(err.Error(), "connection refused") {
 		t.Errorf("err = %v, want the store's error for the log", err)
 	}

@@ -145,9 +145,11 @@ export default function ImportPanel({ onImported }: Props) {
       >
         <input ref={inputRef} type="file" accept={extensions.join(',')} multiple hidden onChange={handleChange} />
         <button type="button" className="primary" disabled={busy} onClick={() => inputRef.current?.click()}>
-          {busy ? 'Importing…' : 'Import GPX files'}
+          {busy ? 'Importing…' : 'Import files'}
         </button>
-        <span className="hint">or drop files here</span>
+        <span className="hint">
+          {extensions.map((ext) => ext.slice(1).toUpperCase()).join(' or ')} files, or drop them here
+        </span>
         <DuplicateRulesInfo />
 
         {error && <p className="error">{error}</p>}
