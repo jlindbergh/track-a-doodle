@@ -27,7 +27,14 @@ type appConfig struct {
 	Tiles  tilesConfig  `json:"tiles"`
 	Import importConfig `json:"import"`
 	// Sports are the recognized sport ids.
-	Sports []string `json:"sports"`
+	Sports []string   `json:"sports"`
+	Auth   authConfig `json:"auth"`
+}
+
+type authConfig struct {
+	// Mode is "password" when users sign in, or "dev" when every request
+	// is served as one development user.
+	Mode string `json:"mode"`
 }
 
 type tilesConfig struct {
@@ -66,5 +73,6 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		Sports: activity.Sports(),
+		Auth:   authConfig{Mode: s.authMode()},
 	})
 }

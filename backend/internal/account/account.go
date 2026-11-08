@@ -46,6 +46,7 @@ var (
 	ErrNotVerified        = errors.New("confirm your email address first: open the link in the email we sent you, or sign up again to get a new one")
 	ErrInvalidToken       = errors.New("this confirmation link is invalid or has expired; sign up again to get a new one")
 	ErrMailBusy           = errors.New("too many sign-ups right now; try again later")
+	ErrSendFailed         = errors.New("the email could not be sent; try again in a few minutes")
 )
 
 // InputError wraps an error caused by what the client sent.
@@ -169,7 +170,7 @@ func (s *Service) Register(ctx context.Context, email, pw string) error {
 		return nil
 	}
 	if err := s.mail.Send(ctx, msg); err != nil {
-		return fmt.Errorf("send sign-up email: %w", err)
+		return fmt.Errorf("%w: %w", ErrSendFailed, err)
 	}
 	return nil
 }
