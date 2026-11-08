@@ -10,9 +10,18 @@ Email + password sign-up and sign-in exist (see the README's Accounts section). 
 - **Bot check on sign-up** if rate limits aren't enough, e.g. [ALTCHA](https://altcha.org/) (self-hosted proof of work, MIT).
 - **Rate limits are per backend process**, in memory. Move them to the database or Redis if there is ever more than one backend.
 
+## Activity services
+
+See [docs/garmin.md](docs/garmin.md).
+
+- **Strava**: self-service OAuth app for up to 10 users, full history and webhooks. Add it as a second provider in `provider_connections`.
+- **Garmin export ZIP**: accept the export as it is, instead of asking users to unzip the FIT files.
+- **Rotate `SECRETS_KEY`**: sealed values start with a version byte; re-encrypt with a new key.
+- **Garmin OAuth with push**, if a business application is ever approved.
+
 ## Generate TypeScript types from the Go API types
 
-The API types in [frontend/src/api.ts](frontend/src/api.ts) are written by hand to mirror the Go structs (`activity.Facts`, `activity.Summary`, `activity.Comparison`, `importer.Result` and its statuses, the `/api/config` types), so they can drift apart without any error.
+The API types in [frontend/src/api.ts](frontend/src/api.ts) are written by hand to mirror the Go structs (`activity.Facts`, `activity.Summary`, `activity.Comparison`, `importer.Result` and its statuses, `activitysync.Status`, the `/api/config` types), so they can drift apart without any error.
 
 - Generate them from the Go structs, for example with [tygo](https://github.com/gzuidhof/tygo) added as a Go tool in `backend/go.mod`.
 - Add `./dev.sh gen`, run in a Go container since nothing is installed on the host, and make `./dev.sh test` fail when the generated files are out of date.

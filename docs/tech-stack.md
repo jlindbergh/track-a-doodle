@@ -56,7 +56,7 @@ Storing timestamps in `M` avoids a separate points table until per-point analyti
 - Formats: GPX, **FIT** (Garmin's native format; has heart rate, cadence and power), TCX.
 - Bulk exports first: Strava's "download your archive" and Garmin's account data export.
 - Strava API (OAuth, webhooks): check the current API agreement, which was tightened in late 2024 around showing data to other users.
-- The Garmin API requires applying to their developer program, so start with file import.
+- Garmin Connect: synced with each user's personal API key (Garmin's Personal API), including the whole history. Garmin's OAuth program needs an approved organisation and gives no history at its first tier. See [garmin.md](garmin.md).
 - Add privacy zones early (trim the start and end of tracks near home).
 
 ## Basemaps
