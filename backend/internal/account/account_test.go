@@ -131,11 +131,17 @@ func TestRegisterVerifyLogin(t *testing.T) {
 	}
 	token := tokenFrom(t, sent[0])
 
-	if _, err := svc.Login(ctx, "asa@example.com", pw); !errors.Is(err, ErrNotVerified) {
+	_, err := svc.Login(ctx, "asa@example.com", pw)
+	if in := (InputError{}); !errors.As(err, &in) || in.Err != ErrNotVerified || in.Reason != ReasonNotVerified {
 		t.Fatalf("login before verifying: %v, want ErrNotVerified", err)
 	}
-	if _, err := svc.Verify(ctx, token, "not the password"); !errors.Is(err, ErrWrongPassword) {
+	_, err = svc.Verify(ctx, token, "not the password")
+	if in := (InputError{}); !errors.As(err, &in) || in.Err != ErrWrongPassword || in.Reason != ReasonWrongPassword {
 		t.Fatalf("verify with wrong password: %v", err)
+	}
+	_, err = svc.Verify(ctx, "no-such-token", pw)
+	if in := (InputError{}); !errors.As(err, &in) || in.Reason != ReasonInvalidToken {
+		t.Fatalf("verify with unknown token: %v", err)
 	}
 	// The wrong password didn't use the link up.
 	sess, err := svc.Verify(ctx, token, pw)
@@ -241,14 +247,23 @@ func TestLoginErrorsAreTheSame(t *testing.T) {
 	// A dev-mode user has no password and can never sign in with one.
 	st.users["dev@example.com"] = &store.Account{User: store.User{ID: "id-dev@example.com"}, Verified: true}
 
-	for _, c := range []struct{ email, pw string }{
-		{"unknown@example.com", pw},
-		{"a@example.com", "wrong password"},
-		{"dev@example.com", ""},
-		{"not an email", pw},
+	for _, c := range []struct {
+		email, pw string
+		reason    Reason
+	}{
+		{"unknown@example.com", pw, ReasonUnknownEmail},
+		{"a@example.com", "wrong password", ReasonWrongPassword},
+		{"dev@example.com", "", ReasonNoPassword},
+		{"not an email", pw, ReasonInvalidInput},
 	} {
-		if _, err := svc.Login(ctx, c.email, c.pw); !errors.Is(err, ErrInvalidCredentials) {
+		_, err := svc.Login(ctx, c.email, c.pw)
+		if !errors.Is(err, ErrInvalidCredentials) {
 			t.Errorf("Login(%q): %v, want ErrInvalidCredentials", c.email, err)
+		}
+		// The client sees one error; the log tells them apart.
+		var in InputError
+		if !errors.As(err, &in) || in.Reason != c.reason {
+			t.Errorf("Login(%q): reason %q, want %q", c.email, in.Reason, c.reason)
 		}
 	}
 }

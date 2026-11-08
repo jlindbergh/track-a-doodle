@@ -121,9 +121,14 @@ func (s *Server) verify(w http.ResponseWriter, r *http.Request) {
 	}
 	sess, err := s.accounts.Accounts.Verify(r.Context(), req.Token, req.Password)
 	if err != nil {
+		if in := (account.InputError{}); errors.As(err, &in) {
+			s.log.WarnContext(r.Context(), "account confirmation failed",
+				"reason", in.Reason, "ip", s.clientIP(r))
+		}
 		s.accountError(w, r, err)
 		return
 	}
+	s.log.InfoContext(r.Context(), "account confirmed", "user", sess.User.ID, "email", sess.User.Email, "ip", s.clientIP(r))
 	s.startSession(w, r, sess)
 }
 
@@ -137,9 +142,14 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	sess, err := s.accounts.Accounts.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
+		if in := (account.InputError{}); errors.As(err, &in) {
+			s.log.WarnContext(r.Context(), "login failed",
+				"reason", in.Reason, "email", logEmail(req.Email), "ip", s.clientIP(r))
+		}
 		s.accountError(w, r, err)
 		return
 	}
+	s.log.InfoContext(r.Context(), "login", "user", sess.User.ID, "email", sess.User.Email, "ip", s.clientIP(r))
 	s.startSession(w, r, sess)
 }
 
@@ -160,12 +170,30 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, sess accou
 
 // allow answers 429 and returns false if the client IP is over limit.
 func (s *Server) allow(w http.ResponseWriter, r *http.Request, limit *ratelimit.Keyed) bool {
-	if limit.Allow(ratelimit.ClientIP(r, s.accounts.TrustProxy)) {
+	ip := s.clientIP(r)
+	if limit.Allow(ip) {
 		return true
 	}
+	s.log.WarnContext(r.Context(), "rate limited", "path", r.URL.Path, "ip", ip)
 	w.Header().Set("Retry-After", "60")
 	http.Error(w, tooManyAttemptsMessage, http.StatusTooManyRequests)
 	return false
+}
+
+func (s *Server) clientIP(r *http.Request) string {
+	return ratelimit.ClientIP(r, s.accounts.TrustProxy)
+}
+
+// maxLoggedEmail caps the email logged for a failed login, which is
+// whatever the client sent. The text handler quotes it, so it can't add
+// lines to the log.
+const maxLoggedEmail = 254
+
+func logEmail(email string) string {
+	if len(email) > maxLoggedEmail {
+		return email[:maxLoggedEmail] + "…"
+	}
+	return email
 }
 
 // readJSON decodes a small JSON body into v, answering 400 if it can't.
