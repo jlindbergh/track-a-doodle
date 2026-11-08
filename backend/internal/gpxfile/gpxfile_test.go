@@ -4,6 +4,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
 )
 
 const twoSegments = `<?xml version="1.0" encoding="UTF-8"?>
@@ -63,10 +65,10 @@ func TestParseNoTrack(t *testing.T) {
 		<trkpt lat="1" lon="2"/>
 	</trkseg></trk></gpx>`
 	_, err := Parse([]byte(doc), "x")
-	if !errors.Is(err, ErrNoTrack) {
+	if !errors.Is(err, activity.ErrNoTrack) {
 		t.Fatalf("err = %v, want ErrNoTrack", err)
 	}
-	var nt *NoTrackError
+	var nt *activity.NoTrackError
 	if errors.As(err, &nt) && nt.Name != "" {
 		t.Errorf("Name = %q, want \"\": the fallback name is not used without a track", nt.Name)
 	}
@@ -84,9 +86,9 @@ func TestParseNoTrackReportsActivity(t *testing.T) {
 	for name, doc := range tests {
 		t.Run(name, func(t *testing.T) {
 			_, err := Parse([]byte(doc), "x")
-			var nt *NoTrackError
+			var nt *activity.NoTrackError
 			if !errors.As(err, &nt) {
-				t.Fatalf("err = %v, want *NoTrackError", err)
+				t.Fatalf("err = %v, want *activity.NoTrackError", err)
 			}
 			if nt.Name != "Zwift ride" || nt.Sport != "virtual_ride" {
 				t.Errorf("got Name=%q Sport=%q", nt.Name, nt.Sport)
@@ -111,7 +113,7 @@ func TestParseInvalidPosition(t *testing.T) {
 				<trkpt lat="59.3" lon="18.0"/><trkpt lat="` + tt.lat + `" lon="` + tt.lon + `"/><trkpt lat="59.4" lon="18.1"/>
 			</trkseg></trk></gpx>`
 			_, err := Parse([]byte(doc), "x")
-			if !errors.Is(err, ErrInvalidPosition) {
+			if !errors.Is(err, activity.ErrInvalidPosition) {
 				t.Fatalf("err = %v, want ErrInvalidPosition", err)
 			}
 			if err.Error() != tt.want {
@@ -146,76 +148,11 @@ func TestParseInvalidTimestamps(t *testing.T) {
 		<trkpt lat="59.4" lon="18.1"><time>2100-01-01T00:00:00Z</time></trkpt>
 	</trkseg></trk></gpx>`
 	_, err := Parse([]byte(doc), "x")
-	if !errors.Is(err, ErrInvalidTimestamps) {
+	if !errors.Is(err, activity.ErrInvalidTimestamps) {
 		t.Fatalf("err = %v, want ErrInvalidTimestamps", err)
 	}
 	if want := "invalid timestamps: the first and last points are 36159 days apart (2001-01-01 to 2100-01-01)"; err.Error() != want {
 		t.Errorf("err = %q, want %q", err, want)
-	}
-}
-
-func TestNormalizeSport(t *testing.T) {
-	for in, want := range map[string]string{
-		"":                              "unknown",
-		" Running ":                     "running",
-		"Run":                           "running",
-		"VirtualRide":                   "virtual_ride",
-		"indoor_cycling":                "indoor_cycling",
-		"Indoor Rowing":                 "indoor_rowing",
-		"9":                             "running",
-		"NordicSki":                     "cross_country_skiing",
-		"cross_country_skiing_ws":       "cross_country_skiing",
-		"skate_skiing":                  "cross_country_skiing",
-		"AlpineSki":                     "downhill_skiing",
-		"resort_skiing_snowboarding_ws": "downhill_skiing",
-		"IceSkate":                      "skating",
-		"InlineSkate":                   "skating",
-		"skating_ws":                    "skating",
-		"open_water_swimming":           "swimming",
-		"Rowing":                        "rowing",
-		"rowing_v2":                     "rowing",
-		"StandUpPaddling":               "stand_up_paddleboarding",
-		"stand_up_paddleboarding_v2":    "stand_up_paddleboarding",
-		"BackcountrySki":                "backcountry_ski",
-	} {
-		if got := normalizeSport(in); got != want {
-			t.Errorf("normalizeSport(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
-func TestSportFromName(t *testing.T) {
-	for in, want := range map[string]string{
-		"":                                 "unknown",
-		"Morning Run":                      "running",
-		"Afternoon Ride":                   "cycling",
-		"Stockholm - Cycling":              "cycling",
-		"Morning_Run":                      "running",
-		"Hike!":                            "hiking",
-		"Run, running":                     "running",
-		"Brunch":                           "unknown",
-		"Walk then run":                    "unknown",
-		"activity_123456":                  "unknown",
-		"Morning Nordic Ski":               "cross_country_skiing",
-		"Åre Cross Country Classic Skiing": "cross_country_skiing",
-		"Skate Skiing":                     "cross_country_skiing",
-		"Afternoon Alpine Ski":             "downhill_skiing",
-		"Sälen Resort Skiing":              "downhill_skiing",
-		"Evening Ice Skate":                "skating",
-		"Skating on the lake":              "skating",
-		"Morning Ski":                      "unknown",
-		"Cross country run":                "running",
-		"Skate ski then skate":             "unknown",
-		"Morning Stand Up Paddle":          "stand_up_paddleboarding",
-		"Evening SUP":                      "stand_up_paddleboarding",
-		"Paddle board tour":                "stand_up_paddleboarding",
-		"Kayak paddle":                     "unknown",
-		"Lunch Rowing":                     "rowing",
-		"Open water swim":                  "swimming",
-	} {
-		if got := sportFromName(in); got != want {
-			t.Errorf("sportFromName(%q) = %q, want %q", in, got, want)
-		}
 	}
 }
 
@@ -265,9 +202,9 @@ func TestParseSportFallback(t *testing.T) {
 
 func TestParseSportFallbackWithoutTrack(t *testing.T) {
 	doc := `<gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1"><trk><name>Treadmill run</name></trk></gpx>`
-	var noTrack *NoTrackError
+	var noTrack *activity.NoTrackError
 	if _, err := Parse([]byte(doc), "x"); !errors.As(err, &noTrack) {
-		t.Fatalf("err = %v, want a NoTrackError", err)
+		t.Fatalf("err = %v, want an *activity.NoTrackError", err)
 	}
 	if noTrack.Sport != "running" {
 		t.Errorf("Sport = %q, want running", noTrack.Sport)

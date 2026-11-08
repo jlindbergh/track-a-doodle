@@ -13,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
-	"github.com/jlindbergh/track-a-doodle/backend/internal/gpxfile"
 )
 
 // Store wraps a PostgreSQL connection pool.
@@ -62,7 +61,7 @@ func (s *Store) EnsureUserByEmail(ctx context.Context, email string) (User, erro
 
 // NewActivity is an activity about to be stored.
 type NewActivity struct {
-	Activity       gpxfile.Activity
+	Activity       activity.Parsed
 	SourceFilename string
 	ContentSHA256  string
 }
