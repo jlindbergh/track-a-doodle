@@ -88,6 +88,15 @@ A user must never see another user's tracks. The data path is built around that:
 2. The backend resolves the user from the session cookie (see [Accounts](#accounts)) and calls Martin with that user's id. Nothing from the client's query string is forwarded.
 3. `activities_tiles()` in PostGIS returns no tile without a valid `user_id`, and only that user's activities with one.
 4. Martin's database role can execute that function and nothing else. It cannot read the tables directly. The function does trust the `user_id` it is given, though, so anything that can call Martin can read any user's tiles. That is why point 1 matters.
+5. Activities synced from Garmin Connect are imported for the user who owns the connection. A user can only see and change their own connection, and their Garmin API key is stored encrypted, bound to them.
+
+## Garmin Connect
+
+Users can connect their Garmin Connect account from the import panel with a **personal API key**, which they create in Garmin Connect. Track-a-doodle then adds new activities with a GPS track every 30 minutes. Once the user agrees, it also imports everything already in their account. See [docs/garmin.md](docs/garmin.md) for how it works, what was checked against Garmin's API, and why it uses personal keys rather than Garmin's OAuth program.
+
+This needs `SECRETS_KEY`: 32 random bytes in base64 (`openssl rand -base64 32`), used to encrypt the keys in the database. Without it, users can't connect. [compose.yaml](compose.yaml) sets one for local development only. Anywhere else, set your own and keep it, since stored keys can't be read without it.
+
+Garmin's request failures are logged as `garmin request failed` with the status, attempt and retry delay, never the key.
 
 ## Accounts
 
