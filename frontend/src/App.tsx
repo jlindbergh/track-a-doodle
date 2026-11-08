@@ -7,9 +7,11 @@ import ConfirmDelete from './components/ConfirmDelete';
 import ImportPanel from './components/ImportPanel';
 import TrackMap, { type TrackMapHandle } from './components/TrackMap';
 import { formatError } from './format';
+import { useSession } from './session';
 
 export default function App() {
   const mapRef = useRef<MapRef>(null);
+  const session = useSession();
   const listRef = useRef<ActivityListHandle>(null);
   const trackMapRef = useRef<TrackMapHandle>(null);
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -87,6 +89,7 @@ export default function App() {
             </button>
           )}
         </header>
+        {session && <AccountBar email={session.user.email} onSignOut={session.signOut} />}
         <ImportPanel onImported={handleImported} />
         {loadError && <p className="error">{loadError}</p>}
         <ActivityList
@@ -118,6 +121,28 @@ export default function App() {
           onDeleted={handleDeleted}
         />
       )}
+    </div>
+  );
+}
+
+function AccountBar({ email, onSignOut }: { email: string; onSignOut: () => Promise<void> }) {
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <div className="account-bar">
+      <span className="account-email" title={email}>
+        {email}
+      </span>
+      <button
+        type="button"
+        className="link"
+        onClick={() => {
+          setError(null);
+          onSignOut().catch((e: unknown) => setError(formatError(e)));
+        }}
+      >
+        Sign out
+      </button>
+      {error && <p className="error">{error}</p>}
     </div>
   );
 }

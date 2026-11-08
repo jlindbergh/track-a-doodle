@@ -67,6 +67,29 @@ export interface AppConfig {
   };
   /** The sport ids the backend recognizes. */
   sports: string[];
+  auth: {
+    /** "password": users sign in. "dev": every request is one development user. */
+    mode: 'dev' | 'password';
+    passwordMinLength: number;
+    passwordMaxLength: number;
+  };
+}
+
+/** The signed-in user; store.User in the backend. */
+export interface User {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
+let unauthorizedHandler: (() => void) | null = null;
+
+/**
+ * Sets what happens when a request is refused because the session is
+ * missing or has expired, e.g. showing the sign-in screen.
+ */
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler;
 }
 
 /**
@@ -75,6 +98,7 @@ export interface AppConfig {
  * other bodies, such as a proxy's HTML page, are left out.
  */
 async function responseError(res: Response, action: string): Promise<Error> {
+  if (res.status === 401) unauthorizedHandler?.();
   const isText = res.headers.get('Content-Type')?.startsWith('text/plain') ?? false;
   const message = isText ? (await res.text()).trim() : '';
   return new Error(message ? `${action} failed: ${message} (${res.status})` : `${action} failed (${res.status})`);
@@ -112,4 +136,52 @@ export async function importFiles(files: File[], allowDuplicates = false): Promi
 export async function deleteActivity(id: string): Promise<void> {
   const res = await fetch(`/api/activities/${encodeURIComponent(id)}`, { method: 'DELETE' });
   if (!res.ok) throw await responseError(res, 'Delete');
+}
+
+/**
+ * The error for a failed sign-up or sign-in request. The backend's messages
+ * for these are written for users, so they are shown as they are.
+ */
+async function authError(res: Response): Promise<Error> {
+  const isText = res.headers.get('Content-Type')?.startsWith('text/plain') ?? false;
+  const message = isText ? (await res.text()).trim() : '';
+  if (!message) return new Error(`Something went wrong (${res.status}); try again later.`);
+  // Go error strings start in lowercase; these stand on their own.
+  return new Error(message.charAt(0).toUpperCase() + message.slice(1));
+}
+
+async function postAuth(path: string, body?: unknown): Promise<Response> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (!res.ok) throw await authError(res);
+  return res;
+}
+
+/** Returns the signed-in user, or null if there is no valid session. */
+export async function fetchMe(signal?: AbortSignal): Promise<User | null> {
+  const res = await fetch('/api/me', { signal });
+  if (res.status === 401) return null;
+  if (!res.ok) throw await responseError(res, 'Loading your account');
+  return res.json();
+}
+
+/** Signs up. The backend answers the same whether or not the address is new. */
+export async function register(email: string, password: string): Promise<void> {
+  await postAuth('/api/auth/register', { email, password });
+}
+
+/** Confirms an account with the token from the emailed link, and signs in. */
+export async function verify(token: string, password: string): Promise<User> {
+  return (await postAuth('/api/auth/verify', { token, password })).json();
+}
+
+export async function login(email: string, password: string): Promise<User> {
+  return (await postAuth('/api/auth/login', { email, password })).json();
+}
+
+export async function logout(): Promise<void> {
+  await postAuth('/api/auth/logout');
 }

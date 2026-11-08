@@ -614,3 +614,100 @@ button.link {
     border-bottom: 1px solid var(--border);
   }
 }
+
+/* Sign-in, sign-up and account confirmation. */
+.auth-screen {
+  display: grid;
+  place-items: center;
+  min-height: 100%;
+  padding: 16px;
+  background: var(--hover);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.auth-card h1 {
+  margin-bottom: 16px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-form h2 {
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.auth-form p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.auth-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.auth-form input {
+  font: inherit;
+  font-weight: normal;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.auth-form input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+.auth-form .hint,
+.auth-form .muted {
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: normal;
+}
+
+.auth-switch {
+  font-size: 0.875rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.account-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.account-email {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-bar .error {
+  flex-basis: 100%;
+}
