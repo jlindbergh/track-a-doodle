@@ -9,7 +9,7 @@ Status
 - React/TS + Vite single page application 
 - Frontend map rendering using MapLibre GL JS w/ deck.gl (react-map-gl/maplibre)
 - Backend in go (stdlib or chi plus gpx/gpxgo probably)
-- OICD login (Zitadel/Strava OAuth)
+- Email + password login with email verification; OIDC login (Zitadel/Strava OAuth) planned
 - Docker Compose (PostGIS + Martin + frontend) for easy dev setup
 
 For further discussion about tech stack see [docs/tech-stack.md](docs/tech-stack.md)
