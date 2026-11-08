@@ -38,4 +38,7 @@ func TestConfigNeedsNoUser(t *testing.T) {
 	if !slices.Contains(got.Sports, "running") {
 		t.Errorf("Sports = %v", got.Sports)
 	}
+	if got.Auth.Mode != authModeDev {
+		t.Errorf("Auth.Mode = %q, want %q without accounts", got.Auth.Mode, authModeDev)
+	}
 }

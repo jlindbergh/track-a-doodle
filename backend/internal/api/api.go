@@ -33,6 +33,8 @@ type Server struct {
 	martin   *url.URL
 	client   *http.Client
 	log      *slog.Logger
+	// accounts is nil in development mode; see EnableAccounts.
+	accounts *accounts
 }
 
 // New returns a Server. martinURL is the internal base URL of Martin.
@@ -56,6 +58,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/activities/import", auth.Require(s.importActivities))
 	mux.HandleFunc("DELETE /api/activities/{id}", auth.Require(s.deleteActivity))
 	mux.HandleFunc("GET "+tilesPath, auth.Require(s.tile))
+	s.authRoutes(mux)
 	return mux
 }
 
