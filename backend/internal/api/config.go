@@ -28,8 +28,14 @@ type appConfig struct {
 	Tiles  tilesConfig  `json:"tiles"`
 	Import importConfig `json:"import"`
 	// Sports are the recognized sport ids.
-	Sports []string   `json:"sports"`
-	Auth   authConfig `json:"auth"`
+	Sports      []string          `json:"sports"`
+	Auth        authConfig        `json:"auth"`
+	Connections connectionsConfig `json:"connections"`
+}
+
+// connectionsConfig says which activity services users can connect to.
+type connectionsConfig struct {
+	Garmin bool `json:"garmin"`
 }
 
 type authConfig struct {
@@ -81,5 +87,6 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 			PasswordMinLength: password.MinLength,
 			PasswordMaxLength: password.MaxLength,
 		},
+		Connections: connectionsConfig{Garmin: s.connections != nil},
 	})
 }
