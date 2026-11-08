@@ -96,6 +96,12 @@ type Options struct {
 	// Source is where the activity comes from, stored with it. It defaults
 	// to the file's format: "gpx" or "fit".
 	Source string
+	// ExternalID is the source's own id for the activity. An activity with
+	// the same Source and ExternalID is only stored once.
+	ExternalID string
+	// Name names the activity if the file has no name of its own (FIT files
+	// never do). It defaults to the filename without its extension.
+	Name string
 }
 
 // Store stores activities; *store.Store implements it.
@@ -135,7 +141,7 @@ func (im *Importer) Import(ctx context.Context, userID, filename string, data []
 		return res, nil
 	}
 
-	name := strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
+	name := cmp.Or(opts.Name, strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename)))
 	act, err := parse(data, name)
 	var noTrack *activity.NoTrackError
 	if errors.As(err, &noTrack) {
@@ -157,6 +163,7 @@ func (im *Importer) Import(ctx context.Context, userID, filename string, data []
 	ins, err := im.store.InsertActivity(ctx, userID, store.NewActivity{
 		Activity:       act,
 		Source:         cmp.Or(opts.Source, strings.TrimPrefix(ext, ".")),
+		ExternalID:     opts.ExternalID,
 		SourceFilename: filepath.Base(filename),
 		ContentSHA256:  hex.EncodeToString(sum[:]),
 	}, rule)

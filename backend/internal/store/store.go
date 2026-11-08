@@ -62,8 +62,11 @@ func (s *Store) EnsureUserByEmail(ctx context.Context, email string) (User, erro
 // NewActivity is an activity about to be stored.
 type NewActivity struct {
 	Activity activity.Parsed
-	// Source is where the activity comes from, e.g. "gpx" or "fit".
-	Source         string
+	// Source is where the activity comes from, e.g. "gpx", "fit" or "garmin".
+	Source string
+	// ExternalID is the source's own id for the activity, e.g. Garmin's
+	// activityId, or "" if it has none.
+	ExternalID     string
 	SourceFilename string
 	ContentSHA256  string
 }
@@ -74,7 +77,8 @@ type InsertStatus int
 const (
 	// Inserted means the activity was stored.
 	Inserted InsertStatus = iota
-	// SameFile means the user has already imported a byte-identical file.
+	// SameFile means the user has already imported a byte-identical file,
+	// or the activity with the same Source and ExternalID.
 	SameFile
 	// PossibleDuplicate means an existing activity matches the DuplicateRule.
 	PossibleDuplicate
@@ -104,8 +108,9 @@ type InsertResult struct {
 }
 
 // InsertActivity stores an activity for userID unless the user already has
-// it. Byte-identical files are always rejected. Other activities are checked
-// against rule; pass a nil rule to store possible duplicates anyway.
+// it. Byte-identical files, and activities with the same Source and
+// ExternalID as a stored one, are always rejected. Other activities are
+// checked against rule; pass a nil rule to store possible duplicates anyway.
 func (s *Store) InsertActivity(ctx context.Context, userID string, na NewActivity, rule *activity.DuplicateRule) (InsertResult, error) {
 	a := na.Activity
 	res := InsertResult{New: activity.Facts{Name: a.Name, Sport: a.Sport, StartedAt: a.StartedAt, DurationS: a.DurationS}}
@@ -125,8 +130,10 @@ func (s *Store) InsertActivity(ctx context.Context, userID string, na NewActivit
 	existing, err := scanFacts(tx.QueryRow(ctx, `
 		SELECT `+factsColumns+`
 		  FROM activities
-		 WHERE user_id = $1 AND content_sha256 = $2`,
-		userID, na.ContentSHA256))
+		 WHERE user_id = $1
+		   AND (content_sha256 = $2 OR (source = $3 AND external_id = $4))
+		 LIMIT 1`,
+		userID, na.ContentSHA256, na.Source, nullIfEmpty(na.ExternalID)))
 	if err != nil {
 		return InsertResult{}, fmt.Errorf("find same file: %w", err)
 	}
@@ -142,10 +149,10 @@ func (s *Store) InsertActivity(ctx context.Context, userID string, na NewActivit
 	// duplicate is rolled back.
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO activities
-			(user_id, name, sport, started_at, duration_s, source, source_filename, content_sha256, geom)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, ST_GeomFromText($9, 4326))
+			(user_id, name, sport, started_at, duration_s, source, external_id, source_filename, content_sha256, geom)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, ST_GeomFromText($10, 4326))
 		RETURNING id, distance_m`,
-		userID, a.Name, a.Sport, a.StartedAt, a.DurationS, na.Source, na.SourceFilename, na.ContentSHA256, a.WKT(),
+		userID, a.Name, a.Sport, a.StartedAt, a.DurationS, na.Source, nullIfEmpty(na.ExternalID), na.SourceFilename, na.ContentSHA256, a.WKT(),
 	).Scan(&res.New.ID, &res.New.DistanceM); err != nil {
 		return InsertResult{}, fmt.Errorf("insert activity: %w", err)
 	}
@@ -267,4 +274,12 @@ func (s *Store) DeleteActivity(ctx context.Context, userID, id string) (bool, er
 		return false, fmt.Errorf("delete activity: %w", err)
 	}
 	return tag.RowsAffected() == 1, nil
+}
+
+// nullIfEmpty returns nil for "", so it is stored as NULL.
+func nullIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
