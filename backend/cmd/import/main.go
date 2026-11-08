@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jlindbergh/track-a-doodle/backend/internal/account"
 	"github.com/jlindbergh/track-a-doodle/backend/internal/importer"
 	"github.com/jlindbergh/track-a-doodle/backend/internal/store"
 )
@@ -29,7 +30,8 @@ func main() {
 
 func run() error {
 	dir := flag.String("dir", "/samples", "directory to search (recursively) for .gpx files")
-	email := flag.String("user", os.Getenv("DEV_USER_EMAIL"), "email of the user who will own the activities")
+	email := flag.String("user", os.Getenv("DEV_USER_EMAIL"),
+		"email of the user who will own the activities; with AUTH_MODE=password they must have signed up")
 	allowDuplicates := flag.Bool("allow-duplicates", false,
 		"also import files that look like duplicates of existing activities (exact re-imports are still skipped)")
 	flag.Parse()
@@ -51,7 +53,7 @@ func run() error {
 	}
 	defer st.Close()
 
-	u, err := st.EnsureUserByEmail(ctx, *email)
+	u, err := importUser(ctx, st, *email)
 	if err != nil {
 		return err
 	}
@@ -125,4 +127,22 @@ func run() error {
 		return fmt.Errorf("%d files could not be saved because of a database error (see above)", storeErrors)
 	}
 	return nil
+}
+
+// importUser returns the user who will own the imported activities. With
+// AUTH_MODE=password that must be an existing account: creating one here
+// would leave a user who can never sign in.
+func importUser(ctx context.Context, st *store.Store, email string) (store.User, error) {
+	if os.Getenv("AUTH_MODE") != "password" {
+		return st.EnsureUserByEmail(ctx, email)
+	}
+	normalized, err := account.NormalizeEmail(email)
+	if err != nil {
+		return store.User{}, fmt.Errorf("-user %q: %w", email, err)
+	}
+	u, err := st.UserByEmail(ctx, normalized)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.User{}, fmt.Errorf("no account for %s: sign up in the app first, then pass -user with that email", normalized)
+	}
+	return u, err
 }
