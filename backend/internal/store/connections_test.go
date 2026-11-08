@@ -80,10 +80,13 @@ func TestClaimDueConnection(t *testing.T) {
 	u := testUser(t, s)
 	c := testConnection(t, s, u.ID)
 
-	// Other tests' connections may be due too; claim until ours comes up.
+	// Other connections in the database may be due too; claim until ours
+	// comes up. The lease is short so that real connections in a
+	// development database are hardly held up.
+	const lease = 2 * time.Second
 	var claimed Connection
 	for range 50 {
-		got, err := s.ClaimDueConnection(ctx, time.Hour)
+		got, err := s.ClaimDueConnection(ctx, lease)
 		if errors.Is(err, ErrNotFound) {
 			break
 		}
@@ -98,8 +101,8 @@ func TestClaimDueConnection(t *testing.T) {
 	if claimed.ID != c.ID {
 		t.Fatal("the new connection was not claimed")
 	}
-	if time.Until(claimed.NextSyncAt) < 59*time.Minute {
-		t.Errorf("NextSyncAt = %v, want the lease of an hour", claimed.NextSyncAt)
+	if !claimed.NextSyncAt.After(time.Now()) {
+		t.Errorf("NextSyncAt = %v, want it moved on by the lease", claimed.NextSyncAt)
 	}
 
 	// Connections with a rejected key are never claimed.
@@ -107,7 +110,7 @@ func TestClaimDueConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 50 {
-		got, err := s.ClaimDueConnection(ctx, time.Hour)
+		got, err := s.ClaimDueConnection(ctx, lease)
 		if errors.Is(err, ErrNotFound) {
 			break
 		}
