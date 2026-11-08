@@ -1,13 +1,5 @@
 # TODO
 
-## Database migrations (soon)
-
-The SQL in [postgis/init/](postgis/init/) only runs when the database volume is first created, so every schema or tile-function change needs `./dev.sh reset-db`, which deletes all data. That stops working once there is data worth keeping.
-
-- Pick a migration tool (for example goose, golang-migrate or tern) and run migrations from the backend or a separate step in `dev.sh`.
-- Turn the current init scripts into the first migrations. Roles and passwords (`010_roles.sh`) probably stay an init step.
-- The simplification tolerances in the `geom_mid`/`geom_lo` generated columns are part of the schema, so tuning tiles will also need a migration.
-
 ## Accounts
 
 Email + password sign-up and sign-in exist (see the README's Accounts section). Still missing:
@@ -32,7 +24,7 @@ Found in a review; none of these is a known bug today.
 
 - **`store.InsertActivity` does too much.** It locks, finds the same file, inserts, decides on duplicates and rolls back ([store.go](backend/internal/store/store.go)). Move the duplicate decision out of the store. Replace the `nil` rule that means "allow duplicates" with an explicit option, and use one set of status names instead of both `Inserted`/`SameFile`/`PossibleDuplicate` and `imported`/`already_imported`/`possible_duplicate`.
 - **`ImportPanel` does too much, and pairs results with files by index** ([ImportPanel.tsx](frontend/src/components/ImportPanel.tsx)). Pair them by the `file` the backend returns, or by a client id, since the backend skips parts without a file name. Use `setEntries(prev => …)` after `await`, and ignore drops while an import is running. Split the derived lists out of the component.
-- **The tile SQL repeats magic numbers.** The extent `4096` and the buffer `64` appear three times in [030_tiles.sql](postgis/init/030_tiles.sql), and line 47 converts the buffer to metres. Name them and explain the conversion, so the bbox filter cannot drift from `ST_AsMVTGeom`.
+- **The tile SQL repeats magic numbers.** The extent `4096` and the buffer `64` appear three times in [00002_tiles.sql](postgis/migrations/00002_tiles.sql), and one line converts the buffer to metres. Name them and explain the conversion, so the bbox filter cannot drift from `ST_AsMVTGeom`. The change needs a new migration that replaces the function.
 - Smaller items:
   - `run()` in [cmd/import/main.go](backend/cmd/import/main.go) does four things.
   - The `as unknown as` casts in [TrackMap.tsx](frontend/src/components/TrackMap.tsx) have no comment.

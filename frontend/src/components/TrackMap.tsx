@@ -125,7 +125,7 @@ interface PopupInfo {
   index: number;
 }
 
-/** Oldest first, undated first; matches the ORDER BY in postgis/init/030_tiles.sql. */
+/** Oldest first, undated first; matches the ORDER BY in the tile function in postgis/migrations/00002_tiles.sql. */
 function compareByStart(a: Activity, b: Activity): number {
   if (a.startedAt !== b.startedAt) {
     if (a.startedAt == null) return -1;

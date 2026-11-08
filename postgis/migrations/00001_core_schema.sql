@@ -1,8 +1,14 @@
--- Core schema. Runs once, when the database volume is first created.
+-- Core schema: users and activities.
+--
+-- The first three migrations were init scripts before goose was added, so
+-- they only create what is missing. Databases created by those scripts
+-- adopt them without losing data.
+
+-- +goose Up
 
 CREATE EXTENSION IF NOT EXISTS postgis;
 
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     -- Always stored trimmed and lowercased by the backend.
     email        text        NOT NULL UNIQUE,
@@ -20,7 +26,7 @@ CREATE TABLE users (
     UNIQUE (oidc_issuer, oidc_subject)
 );
 
-CREATE TABLE activities (
+CREATE TABLE IF NOT EXISTS activities (
     id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     name            text        NOT NULL,
@@ -48,7 +54,7 @@ CREATE TABLE activities (
     UNIQUE (user_id, content_sha256)
 );
 
-CREATE INDEX activities_user_started_idx ON activities (user_id, started_at DESC);
-CREATE INDEX activities_geom_3857_idx    ON activities USING gist (geom_3857);
+CREATE INDEX IF NOT EXISTS activities_user_started_idx ON activities (user_id, started_at DESC);
+CREATE INDEX IF NOT EXISTS activities_geom_3857_idx ON activities USING gist (geom_3857);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON users, activities TO trackadoodle_app;

@@ -36,6 +36,20 @@ services:
       retries: 30
     networks: [data]
 
+  # Applies the SQL migrations in postgis/migrations as the schema owner,
+  # then exits. The backend starts only after it has succeeded.
+  #   ./dev.sh migrate status
+  migrate:
+    build:
+      context: ./postgis
+      dockerfile: migrate.Dockerfile
+    environment:
+      GOOSE_DBSTRING: postgres://trackadoodle_owner:${POSTGRES_PASSWORD:-dev-owner-pw}@db:5432/trackadoodle?sslmode=disable
+    networks: [data]
+    depends_on:
+      db:
+        condition: service_healthy
+
   martin:
     image: ghcr.io/maplibre/martin:v0.18.1
     command: ["--config", "/config/config.yaml"]
@@ -47,8 +61,9 @@ services:
       - ./mapserver:/config:ro
     networks: [data]
     depends_on:
-      db:
-        condition: service_healthy
+      # Martin looks up the tile function when it starts.
+      migrate:
+        condition: service_completed_successfully
 
   backend:
     build: ./backend
@@ -76,8 +91,8 @@ services:
       - "127.0.0.1:8080:8080"
     networks: [data, web, mail]
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       martin:
         condition: service_started
       mailpit:
