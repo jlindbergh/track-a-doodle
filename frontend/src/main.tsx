@@ -5,6 +5,7 @@ import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles.css';
 import App from './App';
+import AuthGate from './components/AuthGate';
 import ConfigProvider from './components/ConfigProvider';
 
 // MapLibre derives its worker URL from its own module URL, which breaks once
@@ -14,7 +15,9 @@ setWorkerUrl(maplibreWorkerUrl);
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ConfigProvider>
-      <App />
+      <AuthGate>
+        <App />
+      </AuthGate>
     </ConfigProvider>
   </StrictMode>,
 );
