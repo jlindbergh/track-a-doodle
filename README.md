@@ -102,6 +102,7 @@ Details:
 - Passwords: argon2id ([backend/internal/password](backend/internal/password/)), 10–128 characters, no composition rules (NIST SP 800-63B).
 - Tokens in links and cookies are random 32-byte values; the database only keeps their SHA-256, so reading it gives no way in.
 - Sessions: an HttpOnly, SameSite=Lax cookie (`tad_session`), valid 30 days, deleted on sign-out. `http.CrossOriginProtection` rejects state-changing requests from other sites (CSRF).
+- Logging: failed sign-ins are logged as warnings with the email as typed, the client IP and a reason the client never sees (`unknown_email`, `wrong_password`, `not_verified`, `no_password`, `invalid_input`). Failed confirmations are logged too (`invalid_token`, `wrong_password`, without the token), and so is every rate-limited request. Successful sign-ins and confirmations are logged at info level. Passwords and tokens are never logged.
 - Against sign-up spam, without a CAPTCHA so far: per-IP limits (5 sign-ups an hour, 10 sign-in or confirm attempts a minute), at most one email a minute and five a day per address, and a global cap on emails per hour. Unconfirmed sign-ups are deleted after 7 days.
 
 Backend settings in password mode (see [compose.yaml](compose.yaml) for the local values):

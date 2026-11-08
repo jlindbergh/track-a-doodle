@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -46,7 +47,11 @@ func (f *fakeAccounts) session() (account.Session, error) {
 }
 
 func accountsServer(f *fakeAccounts) http.Handler {
-	srv := New(nil, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	return accountsServerLogging(f, io.Discard)
+}
+
+func accountsServerLogging(f *fakeAccounts, logTo io.Writer) http.Handler {
+	srv := New(nil, nil, nil, slog.New(slog.NewTextHandler(logTo, nil)))
 	srv.EnableAccounts(AccountsConfig{Accounts: f, CookieSecure: true})
 	return srv.Routes()
 }
@@ -181,5 +186,59 @@ func TestCrossOriginProtection(t *testing.T) {
 		if rec.Code != tt.want {
 			t.Errorf("%s: %d, want %d", tt.name, rec.Code, tt.want)
 		}
+	}
+}
+
+func TestFailedLoginIsLogged(t *testing.T) {
+	var logs bytes.Buffer
+	f := &fakeAccounts{err: account.InputError{Err: account.ErrInvalidCredentials, Reason: account.ReasonWrongPassword}}
+	h := accountsServerLogging(f, &logs)
+	post(h, "/api/auth/login", `{"email":"a@example.com\nlevel=INFO msg=forged","password":"hunter2 secret"}`)
+
+	line := logs.String()
+	for _, want := range []string{"level=WARN", `msg="login failed"`, "reason=wrong_password", `email="a@example.com\nlevel=INFO msg=forged"`, "ip=192.0.2.1"} {
+		if !strings.Contains(line, want) {
+			t.Errorf("log lacks %s:\n%s", want, line)
+		}
+	}
+	if strings.Contains(line, "hunter2") {
+		t.Errorf("password logged:\n%s", line)
+	}
+	if strings.Count(line, "\n") != 1 {
+		t.Errorf("the email split the log line:\n%s", line)
+	}
+}
+
+func TestFailedConfirmationIsLogged(t *testing.T) {
+	var logs bytes.Buffer
+	f := &fakeAccounts{err: account.InputError{Err: account.ErrInvalidToken, Reason: account.ReasonInvalidToken}}
+	post(accountsServerLogging(f, &logs), "/api/auth/verify", `{"token":"secret-token","password":"hunter2 secret"}`)
+	line := logs.String()
+	if !strings.Contains(line, `msg="account confirmation failed"`) || !strings.Contains(line, "reason=invalid_token") {
+		t.Errorf("unexpected log:\n%s", line)
+	}
+	if strings.Contains(line, "secret") {
+		t.Errorf("token or password logged:\n%s", line)
+	}
+}
+
+func TestLoginAndRateLimitAreLogged(t *testing.T) {
+	var logs bytes.Buffer
+	h := accountsServerLogging(&fakeAccounts{}, &logs)
+	post(h, "/api/auth/login", `{"email":"a@example.com","password":"x"}`)
+	if line := logs.String(); !strings.Contains(line, "level=INFO msg=login user=u1") {
+		t.Errorf("successful login not logged:\n%s", line)
+	}
+	for range 11 {
+		post(h, "/api/auth/login", `{"email":"a@example.com","password":"x"}`)
+	}
+	if line := logs.String(); !strings.Contains(line, `msg="rate limited" path=/api/auth/login ip=192.0.2.1`) {
+		t.Errorf("rate limiting not logged:\n%s", line)
+	}
+}
+
+func TestLogEmailIsCapped(t *testing.T) {
+	if got := logEmail(strings.Repeat("a", 1000)); len(got) > maxLoggedEmail+len("…") {
+		t.Errorf("logged %d bytes", len(got))
 	}
 }

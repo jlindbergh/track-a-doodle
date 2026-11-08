@@ -49,8 +49,26 @@ var (
 	ErrSendFailed         = errors.New("the email could not be sent; try again in a few minutes")
 )
 
-// InputError wraps an error caused by what the client sent.
-type InputError struct{ Err error }
+// InputError wraps an error caused by what the client sent. Err is the
+// message for the client; Reason says more, for the server's logs only.
+type InputError struct {
+	Err    error
+	Reason Reason
+}
+
+// Reason is why a sign-in or confirmation failed. Unknown emails and wrong
+// passwords look the same to the client, but not in the logs.
+type Reason string
+
+// Reasons for failed sign-ins and confirmations.
+const (
+	ReasonInvalidInput  Reason = "invalid_input"
+	ReasonUnknownEmail  Reason = "unknown_email"
+	ReasonNoPassword    Reason = "no_password"
+	ReasonWrongPassword Reason = "wrong_password"
+	ReasonNotVerified   Reason = "not_verified"
+	ReasonInvalidToken  Reason = "invalid_token"
+)
 
 func (e InputError) Error() string { return e.Err.Error() }
 func (e InputError) Unwrap() error { return e.Err }
@@ -128,10 +146,10 @@ func NormalizeEmail(s string) (string, error) {
 func (s *Service) Register(ctx context.Context, email, pw string) error {
 	email, err := NormalizeEmail(email)
 	if err != nil {
-		return InputError{err}
+		return InputError{Err: err, Reason: ReasonInvalidInput}
 	}
 	if err := password.Validate(pw); err != nil {
-		return InputError{err}
+		return InputError{Err: err, Reason: ReasonInvalidInput}
 	}
 	// Checked before anything is stored, so a sign-up that can't be mailed
 	// doesn't replace the link of an earlier one.
@@ -187,12 +205,12 @@ func (s *Service) verifyURL(token string) string {
 // password, and signs the user in. A wrong password leaves the token usable.
 func (s *Service) Verify(ctx context.Context, token, pw string) (Session, error) {
 	if token == "" {
-		return Session{}, InputError{ErrInvalidToken}
+		return Session{}, InputError{Err: ErrInvalidToken, Reason: ReasonInvalidToken}
 	}
 	tokenHash := auth.HashToken(token)
 	acct, err := s.store.AccountByVerifyToken(ctx, tokenHash)
 	if errors.Is(err, store.ErrNotFound) {
-		return Session{}, InputError{ErrInvalidToken}
+		return Session{}, InputError{Err: ErrInvalidToken, Reason: ReasonInvalidToken}
 	}
 	if err != nil {
 		return Session{}, err
@@ -202,7 +220,7 @@ func (s *Service) Verify(ctx context.Context, token, pw string) (Session, error)
 		return Session{}, fmt.Errorf("check password of %s: %w", acct.ID, err)
 	}
 	if !ok {
-		return Session{}, InputError{ErrWrongPassword}
+		return Session{}, InputError{Err: ErrWrongPassword, Reason: ReasonWrongPassword}
 	}
 
 	sess, sessHash, err := s.newSession()
@@ -212,7 +230,7 @@ func (s *Service) Verify(ctx context.Context, token, pw string) (Session, error)
 	u, err := s.store.Verify(ctx, tokenHash, sessHash, sess.ExpiresAt)
 	if errors.Is(err, store.ErrNotFound) {
 		// Replaced by a newer sign-up while the password was checked.
-		return Session{}, InputError{ErrInvalidToken}
+		return Session{}, InputError{Err: ErrInvalidToken, Reason: ReasonInvalidToken}
 	}
 	if err != nil {
 		return Session{}, err
@@ -227,7 +245,7 @@ func (s *Service) Login(ctx context.Context, email, pw string) (Session, error) 
 	email, err := NormalizeEmail(email)
 	if err != nil || len(pw) > 4*password.MaxLength {
 		password.CheckDummy(pw)
-		return Session{}, InputError{ErrInvalidCredentials}
+		return Session{}, InputError{Err: ErrInvalidCredentials, Reason: ReasonInvalidInput}
 	}
 	acct, err := s.store.AccountByEmail(ctx, email)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -235,18 +253,22 @@ func (s *Service) Login(ctx context.Context, email, pw string) (Session, error) 
 	}
 	if err != nil || acct.PasswordHash == "" {
 		password.CheckDummy(pw)
-		return Session{}, InputError{ErrInvalidCredentials}
+		reason := ReasonUnknownEmail
+		if err == nil {
+			reason = ReasonNoPassword
+		}
+		return Session{}, InputError{Err: ErrInvalidCredentials, Reason: reason}
 	}
 	ok, err := password.Check(pw, acct.PasswordHash)
 	if err != nil {
 		return Session{}, fmt.Errorf("check password of %s: %w", acct.ID, err)
 	}
 	if !ok {
-		return Session{}, InputError{ErrInvalidCredentials}
+		return Session{}, InputError{Err: ErrInvalidCredentials, Reason: ReasonWrongPassword}
 	}
 	// Only said once the password is known to be right.
 	if !acct.Verified {
-		return Session{}, InputError{ErrNotVerified}
+		return Session{}, InputError{Err: ErrNotVerified, Reason: ReasonNotVerified}
 	}
 
 	sess, sessHash, err := s.newSession()
