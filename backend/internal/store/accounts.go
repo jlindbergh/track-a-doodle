@@ -295,3 +295,12 @@ func (s *Store) PurgeExpired(ctx context.Context, unverifiedAge time.Duration) (
 	}
 	return c, nil
 }
+
+// DeleteUser deletes a user and, through the foreign keys, everything that
+// belongs to them: activities, connections, sessions and tokens.
+func (s *Store) DeleteUser(ctx context.Context, userID string) error {
+	if _, err := s.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, userID); err != nil {
+		return fmt.Errorf("delete user: %w", err)
+	}
+	return nil
+}
