@@ -4,6 +4,7 @@ import { useConfig } from '../config';
 import DuplicateReview, { type ReviewItem } from './DuplicateReview';
 import DuplicateRulesInfo from './DuplicateRulesInfo';
 import FailedImports, { type FailedItem } from './FailedImports';
+import GarminConnect from './GarminConnect';
 import NoTrackNotice, { type NoTrackItem } from './NoTrackNotice';
 import { formatError } from '../format';
 import { formatCount } from '../plural';
@@ -11,6 +12,8 @@ import { formatCount } from '../plural';
 interface Props {
   /** Called after an import that stored at least one new activity. */
   onImported: () => void;
+  /** Called when a sync from a connected service has added activities. */
+  onSynced: () => void;
 }
 
 /** One uploaded file and what happened to it. */
@@ -26,9 +29,10 @@ function possibleDuplicates(n: number): string {
   return formatCount(n, 'possible duplicate', 'possible duplicates');
 }
 
-export default function ImportPanel({ onImported }: Props) {
+export default function ImportPanel({ onImported, onSynced }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const extensions = useConfig().import.acceptedExtensions;
+  const config = useConfig();
+  const extensions = config.import.acceptedExtensions;
   const [busy, setBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [entries, setEntries] = useState<Entry[] | null>(null);
@@ -155,6 +159,8 @@ export default function ImportPanel({ onImported }: Props) {
         {error && <p className="error">{error}</p>}
         {summary && <div className="import-result">{summary.filter(Boolean).join(', ')}</div>}
       </div>
+
+      {config.connections.garmin && <GarminConnect onSynced={onSynced} />}
 
       {failed.length > 0 && <FailedImports items={failed} />}
 
