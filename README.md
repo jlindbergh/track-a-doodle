@@ -59,7 +59,7 @@ Values that more than one layer depends on are defined in the backend and served
 | `frontend` | [frontend/](frontend/)     | `127.0.0.1:5173` | Vite dev server (React + MapLibre GL JS), proxies `/api` to the backend |
 | `backend`  | [backend/](backend/)       | `127.0.0.1:8080` | Go API: auth, GPX import, tile proxy |
 | `martin`   | [mapserver/](mapserver/)   | not published    | Martin vector tile server |
-| `db`       | [postgis/](postgis/)       | `127.0.0.1:5433` | PostgreSQL 17 + PostGIS (h3-pg installed, not enabled) |
+| `db`       | [postgis/](postgis/)       | `127.0.0.1:5433` | PostgreSQL 17 + PostGIS |
 
 Connect with psql: `psql postgres://trackadoodle_owner:dev-owner-pw@localhost:5433/trackadoodle`.
 Defaults can be overridden with environment variables or a `.env` file (see [compose.yaml](compose.yaml)).
