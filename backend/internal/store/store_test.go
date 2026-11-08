@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
-	"github.com/jlindbergh/track-a-doodle/backend/internal/gpxfile"
 )
 
 // These tests need a database migrated with postgis/migrations, e.g.
@@ -54,14 +53,14 @@ var baseStart = time.Date(2026, 6, 1, 7, 0, 0, 0, time.UTC)
 func newActivity(startOffset time.Duration, durationS int, lengthFactor float64) NewActivity {
 	start := baseStart.Add(startOffset)
 	const n = 10
-	line := make([]gpxfile.LonLat, n+1)
+	line := make([]activity.LonLat, n+1)
 	for i := range line {
-		line[i] = gpxfile.LonLat{Lon: 18.0, Lat: 59.3 + 0.01*lengthFactor*float64(i)/n}
+		line[i] = activity.LonLat{Lon: 18.0, Lat: 59.3 + 0.01*lengthFactor*float64(i)/n}
 	}
 	return NewActivity{
-		Activity: gpxfile.Activity{
+		Activity: activity.Parsed{
 			Name: "Run", Sport: "running", StartedAt: &start, DurationS: &durationS,
-			Lines: [][]gpxfile.LonLat{line},
+			Lines: [][]activity.LonLat{line},
 		},
 		SourceFilename: "run.gpx",
 		ContentSHA256:  rand.Text(), // a different file each time unless set

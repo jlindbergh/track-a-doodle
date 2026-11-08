@@ -110,7 +110,7 @@ func (im *Importer) ImportGPX(ctx context.Context, userID, filename string, data
 
 	name := strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
 	act, err := gpxfile.Parse(data, name)
-	var noTrack *gpxfile.NoTrackError
+	var noTrack *activity.NoTrackError
 	if errors.As(err, &noTrack) {
 		res.Status = StatusNoGPSTrack
 		res.Activity = &activity.Facts{Name: noTrack.Name, Sport: noTrack.Sport}
