@@ -15,10 +15,12 @@ import (
 	"time"
 
 	"github.com/jlindbergh/track-a-doodle/backend/internal/account"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/activitysync"
 	"github.com/jlindbergh/track-a-doodle/backend/internal/api"
 	"github.com/jlindbergh/track-a-doodle/backend/internal/auth"
 	"github.com/jlindbergh/track-a-doodle/backend/internal/importer"
 	"github.com/jlindbergh/track-a-doodle/backend/internal/mail"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/secretbox"
 	"github.com/jlindbergh/track-a-doodle/backend/internal/store"
 )
 
@@ -49,7 +51,21 @@ func run(log *slog.Logger) error {
 	}
 	defer st.Close()
 
-	srv := api.New(st, importer.New(st), martinURL, log)
+	im := importer.New(st)
+	srv := api.New(st, im, martinURL, log)
+
+	if key := os.Getenv("SECRETS_KEY"); key != "" {
+		box, err := secretbox.NewFromBase64(key)
+		if err != nil {
+			return fmt.Errorf("SECRETS_KEY: %w", err)
+		}
+		syncer := activitysync.New(activitysync.Config{Store: st, Importer: im, Box: box, Logger: log})
+		srv.EnableConnections(syncer)
+		go syncer.Run(ctx)
+		log.Info("Garmin Connect sync is on")
+	} else {
+		log.Info("SECRETS_KEY is not set, so users can't connect Garmin Connect")
+	}
 
 	var handler http.Handler
 	switch mode := os.Getenv("AUTH_MODE"); mode {

@@ -84,6 +84,11 @@ services:
       COOKIE_SECURE: "false"
       # Requests come through the Vite proxy, which adds X-Forwarded-For.
       TRUST_PROXY_HEADERS: "true"
+      # Encrypts users' Garmin API keys in the database; without it users
+      # can't connect Garmin Connect. The default is for local development
+      # only: anywhere else, set your own with  openssl rand -base64 32
+      # and keep it, or the stored keys can't be read any more.
+      SECRETS_KEY: ${SECRETS_KEY:-dHJhY2stYS1kb29kbGUgZGV2LW9ubHkgc2VjcmV0cyE=}
     volumes:
       # Drop your own .gpx files here for batch import (see README).
       - ./samples:/samples:ro

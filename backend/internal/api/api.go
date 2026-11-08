@@ -35,6 +35,9 @@ type Server struct {
 	log      *slog.Logger
 	// accounts is nil in development mode; see EnableAccounts.
 	accounts *accounts
+	// connections is nil when syncing with activity services is off; see
+	// EnableConnections.
+	connections *connections
 }
 
 // New returns a Server. martinURL is the internal base URL of Martin.
@@ -59,6 +62,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/activities/{id}", auth.Require(s.deleteActivity))
 	mux.HandleFunc("GET "+tilesPath, auth.Require(s.tile))
 	s.authRoutes(mux)
+	s.connectionRoutes(mux)
 	return mux
 }
 
