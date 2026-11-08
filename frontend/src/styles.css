@@ -711,3 +711,154 @@ button.link {
 .account-bar .error {
   flex-basis: 100%;
 }
+
+/* Garmin Connect, in the import panel. */
+.garmin-entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.garmin {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 0.875rem;
+}
+
+.garmin h2 {
+  font-size: 1rem;
+  margin: 0;
+}
+
+.garmin p {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.garmin-steps {
+  margin: 0;
+  padding-left: 20px;
+  line-height: 1.4;
+}
+
+.garmin-steps li + li {
+  margin-top: 4px;
+}
+
+.garmin-steps code {
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.garmin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.garmin-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-weight: 600;
+}
+
+.garmin-form label .hint {
+  font-weight: normal;
+}
+
+.garmin-form input {
+  font: inherit;
+  font-weight: normal;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color-scheme: light dark;
+}
+
+.garmin-form input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: transparent;
+}
+
+.garmin-message {
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.warning-box {
+  border: 1px solid var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.error-box {
+  border: 1px solid var(--error-border);
+  background: var(--error-bg);
+  color: var(--error);
+}
+
+.garmin-backfill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.garmin-backfill progress {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.garmin-actions {
+  display: flex;
+  gap: 16px;
+}
+
+.garmin-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.consent-points {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  line-height: 1.45;
+}
+
+.consent-points li + li {
+  margin-top: 6px;
+}
+
+/* Read by screen readers, not shown. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.garmin .confirm-actions {
+  margin-top: 0;
+}
+
+.consent-dialog {
+  width: min(480px, calc(100vw - 32px));
+}
+
+.garmin a {
+  color: var(--accent);
+}

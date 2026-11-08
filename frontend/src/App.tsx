@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
 import { fetchActivities, type Activity } from './api';
 import { unionBBox, type BBox } from './bbox';
@@ -19,6 +19,9 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Bumped after each import: refetches the list and fits the map to it.
   const [dataVersion, setDataVersion] = useState(0);
+  // Whether the next load of the list fits the map to it. Not after a
+  // background sync, which would move the map while the user looks at it.
+  const fitOnLoadRef = useRef(true);
   // Bumped whenever the user's data changes: refetches the map tiles.
   const [tilesVersion, setTilesVersion] = useState(0);
   // The activity the delete confirmation is shown for.
@@ -33,7 +36,7 @@ export default function App() {
       .then((list) => {
         setActivities(list);
         setLoadError(null);
-        setPendingFit(unionBBox(list));
+        if (fitOnLoadRef.current) setPendingFit(unionBBox(list));
       })
       .catch((e: unknown) => {
         if (!controller.signal.aborted) setLoadError(formatError(e));
@@ -66,9 +69,17 @@ export default function App() {
   }
 
   function handleImported() {
+    fitOnLoadRef.current = true;
     setDataVersion((v) => v + 1);
     setTilesVersion((v) => v + 1);
   }
+
+  // Stable, since GarminConnect calls it from an effect.
+  const handleSynced = useCallback(() => {
+    fitOnLoadRef.current = false;
+    setDataVersion((v) => v + 1);
+    setTilesVersion((v) => v + 1);
+  }, []);
 
   // Drops the activity locally rather than refetching, so the map stays where it is.
   function handleDeleted(id: string) {
@@ -90,7 +101,7 @@ export default function App() {
           )}
         </header>
         {session && <AccountBar email={session.user.email} onSignOut={session.signOut} />}
-        <ImportPanel onImported={handleImported} />
+        <ImportPanel onImported={handleImported} onSynced={handleSynced} />
         {loadError && <p className="error">{loadError}</p>}
         <ActivityList
           ref={listRef}

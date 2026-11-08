@@ -73,6 +73,35 @@ export interface AppConfig {
     passwordMinLength: number;
     passwordMaxLength: number;
   };
+  /** The activity services users can connect to. */
+  connections: {
+    garmin: boolean;
+  };
+}
+
+/** Progress of importing everything from a service; activitysync.Backfill in the backend. */
+export interface BackfillStatus {
+  status: 'not_requested' | 'running' | 'done' | 'failed' | 'cancelled';
+  consentedAt: string | null;
+  /** How many of the service's activities with GPS have been looked at, oldest first. */
+  checked: number;
+  imported: number;
+  /** Already imported (e.g. from files), possible duplicates, or without a GPS track. */
+  skipped: number;
+  failed: number;
+}
+
+/** A connection to an activity service; activitysync.Status in the backend. Never holds the key. */
+export interface ConnectionStatus {
+  provider: 'garmin';
+  status: 'active' | 'invalid_key' | 'key_expired' | 'error';
+  /** What went wrong last, written for the user. */
+  lastError: string | null;
+  keyExpiresAt: string | null;
+  connectedAt: string;
+  lastSyncedAt: string | null;
+  nextSyncAt: string;
+  backfill: BackfillStatus;
 }
 
 /** The signed-in user; store.User in the backend. */
@@ -184,4 +213,47 @@ export async function login(email: string, password: string): Promise<User> {
 
 export async function logout(): Promise<void> {
   await postAuth('/api/auth/logout');
+}
+
+/**
+ * Sends a request to the connections API. Its error messages are written
+ * for users, so they are shown as they are.
+ */
+async function connectionRequest(method: string, path: string, body?: unknown): Promise<Response> {
+  const res = await fetch(path, {
+    method,
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  if (res.status === 401) unauthorizedHandler?.();
+  if (!res.ok) throw await authError(res);
+  return res;
+}
+
+/** The user's connections to activity services. */
+export function fetchConnections(signal?: AbortSignal): Promise<ConnectionStatus[]> {
+  return getJSON('/api/connections', 'connections', signal);
+}
+
+/**
+ * Connects the user's Garmin account with a personal API key, or replaces the
+ * key. keyExpiresAt is a date like "2027-11-08", or "" if not given.
+ */
+export async function connectGarmin(apiKey: string, keyExpiresAt: string): Promise<ConnectionStatus> {
+  return (await connectionRequest('PUT', '/api/connections/garmin', { apiKey, keyExpiresAt })).json();
+}
+
+/** Disconnects Garmin Connect. Imported activities stay. */
+export async function disconnectGarmin(): Promise<void> {
+  await connectionRequest('DELETE', '/api/connections/garmin');
+}
+
+/** Starts importing everything from Garmin Connect, which the user has agreed to. */
+export async function startGarminBackfill(): Promise<ConnectionStatus> {
+  return (await connectionRequest('POST', '/api/connections/garmin/backfill', { consent: true })).json();
+}
+
+/** Stops importing everything from Garmin Connect. */
+export async function cancelGarminBackfill(): Promise<ConnectionStatus> {
+  return (await connectionRequest('DELETE', '/api/connections/garmin/backfill')).json();
 }
