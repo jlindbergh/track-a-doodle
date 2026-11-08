@@ -3,8 +3,8 @@ A tool for visualizing, filtering and viewing GPS located activities on a map.
 
 
 ## Tech stack
-Status **proposed**
-- PostgreSQL + PostGIS (probably with `h3-pg` extension for hexagon summaries)
+Status
+- PostgreSQL + PostGIS
 - Map tiles, served by Martin
 - React/TS + Vite single page application 
 - Frontend map rendering using MapLibre GL JS w/ deck.gl (react-map-gl/maplibre)

@@ -6,7 +6,7 @@ Status: **proposed**. This is not final yet. It comes from an earlier discussion
 
 | Layer | Choice | Rejected / alternatives |
 |---|---|---|
-| Database | PostGIS + `h3-pg` | DuckDB-spatial (only fits a single-user desktop tool) |
+| Database | PostGIS | DuckDB-spatial (only fits a single-user desktop tool); `h3-pg` for hexagon aggregates (deferred: the zoomed-out overview uses count bubbles clustered in the browser) |
 | Tiles | Vector tiles (MVT) from PostGIS via **Martin**, or a backend `ST_AsMVT` endpoint | GeoServer (too heavy; built around WMS/WFS and raster), pg_tileserv |
 | Frontend map | **MapLibre GL JS** + **deck.gl** | Leaflet (raster/DOM based, slow with thousands of tracks), OpenLayers (more verbose), custom WebGL (deck.gl already does it) |
 | Backend | **Go** (chi, pgx, gpxgo, a FIT library); kept thin | Python FastAPI (gpxpy, fitdecode), Rust Axum, Supabase (no backend) |
