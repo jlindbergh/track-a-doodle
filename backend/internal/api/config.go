@@ -5,6 +5,7 @@ import (
 
 	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
 	"github.com/jlindbergh/track-a-doodle/backend/internal/importer"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/password"
 )
 
 // Tiles. The zoom range is only enforced here; Martin serves any zoom.
@@ -34,7 +35,9 @@ type appConfig struct {
 type authConfig struct {
 	// Mode is "password" when users sign in, or "dev" when every request
 	// is served as one development user.
-	Mode string `json:"mode"`
+	Mode              string `json:"mode"`
+	PasswordMinLength int    `json:"passwordMinLength"`
+	PasswordMaxLength int    `json:"passwordMaxLength"`
 }
 
 type tilesConfig struct {
@@ -73,6 +76,10 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 			},
 		},
 		Sports: activity.Sports(),
-		Auth:   authConfig{Mode: s.authMode()},
+		Auth: authConfig{
+			Mode:              s.authMode(),
+			PasswordMinLength: password.MinLength,
+			PasswordMaxLength: password.MaxLength,
+		},
 	})
 }

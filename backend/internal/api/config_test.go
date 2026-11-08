@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/jlindbergh/track-a-doodle/backend/internal/importer"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/password"
 )
 
 func TestConfigNeedsNoUser(t *testing.T) {
@@ -38,7 +39,7 @@ func TestConfigNeedsNoUser(t *testing.T) {
 	if !slices.Contains(got.Sports, "running") {
 		t.Errorf("Sports = %v", got.Sports)
 	}
-	if got.Auth.Mode != authModeDev {
-		t.Errorf("Auth.Mode = %q, want %q without accounts", got.Auth.Mode, authModeDev)
+	if got.Auth.Mode != authModeDev || got.Auth.PasswordMinLength != password.MinLength {
+		t.Errorf("Auth = %+v, want mode %q without accounts", got.Auth, authModeDev)
 	}
 }
