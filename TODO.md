@@ -8,6 +8,16 @@ The SQL in [postgis/init/](postgis/init/) only runs when the database volume is 
 - Turn the current init scripts into the first migrations. Roles and passwords (`010_roles.sh`) probably stay an init step.
 - The simplification tolerances in the `geom_mid`/`geom_lo` generated columns are part of the schema, so tuning tiles will also need a migration.
 
+## Accounts
+
+Email + password sign-up and sign-in exist (see the README's Accounts section). Still missing:
+
+- **Password reset.** Email a one-time link; `email_tokens.purpose` already leaves room for a `'reset'` purpose. End all the user's sessions when the password changes.
+- **Change password and email** while signed in.
+- **Session list and "sign out everywhere".**
+- **Bot check on sign-up** if rate limits aren't enough, e.g. [ALTCHA](https://altcha.org/) (self-hosted proof of work, MIT).
+- **Rate limits are per backend process**, in memory. Move them to the database or Redis if there is ever more than one backend.
+
 ## Generate TypeScript types from the Go API types
 
 The API types in [frontend/src/api.ts](frontend/src/api.ts) are written by hand to mirror the Go structs (`activity.Facts`, `activity.Summary`, `activity.Comparison`, `importer.Result` and its statuses, the `/api/config` types), so they can drift apart without any error.

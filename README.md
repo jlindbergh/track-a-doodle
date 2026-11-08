@@ -11,7 +11,9 @@ Requires Docker with Compose. Nothing else needs to be installed on the host.
 ./dev.sh
 ```
 
-This rebuilds every module and recreates all containers, keeping the database. Run it again after pulling, switching branches or changing dependencies. Then open http://localhost:5173 and import GPX files with the button, or drag and drop them onto it.
+This rebuilds every module and recreates all containers, keeping the database. Run it again after pulling, switching branches or changing dependencies. Then open http://localhost:5173, sign up, and import GPX files with the button, or drag and drop them onto it.
+
+Sign-up emails aren't delivered anywhere locally: [Mailpit](https://mailpit.axllent.org/) catches them, and they show up at http://localhost:8025. Open the confirmation link from there. See [Accounts](#accounts).
 
 Other commands (`./dev.sh help` lists them all):
 
@@ -20,12 +22,12 @@ Other commands (`./dev.sh help` lists them all):
 | `./dev.sh down` | Stop the stack (keeps data) |
 | `./dev.sh logs [service]` | Follow logs |
 | `./dev.sh test` | Backend tests, including database tests, plus the frontend type check |
-| `./dev.sh import [dir] [-allow-duplicates]` | Batch-import GPX files from `dir`, or [samples/](samples/) by default |
+| `./dev.sh import [dir] [-user email] [-allow-duplicates]` | Batch-import GPX files from `dir`, or [samples/](samples/) by default, for a user who has signed up |
 | `./dev.sh reset-db` | Delete all data and recreate the database from [postgis/init/](postgis/init/), after asking |
 
 Frontend source is mounted into its container, so edits reload live. Backend changes need `./dev.sh`.
 
-To batch-import a folder, run `./dev.sh import ~/path/to/gpx` (subfolders are searched too), or put the files in [samples/](samples/) and run `./dev.sh import`. Files already imported are skipped, so this is also an easy way to import everything again after `./dev.sh reset-db`. The folder must be one Docker can mount (on macOS, anything under your home folder is shared by default; `/tmp` is not).
+To batch-import a folder, sign up in the app first, then run `./dev.sh import ~/path/to/gpx -user you@example.com` (subfolders are searched too), or put the files in [samples/](samples/) and run `./dev.sh import`. Files already imported are skipped, so this is also an easy way to import everything again after `./dev.sh reset-db`. The folder must be one Docker can mount (on macOS, anything under your home folder is shared by default; `/tmp` is not).
 
 An activity's sport comes from the GPX track's `<type>`. Files without one get a sport from a word like "run", "ride" or "hike" in a track's `<name>`, and failing that in the filename (e.g. `Morning_Run.gpx`).
 
@@ -60,6 +62,7 @@ Values that more than one layer depends on are defined in the backend and served
 | `backend`  | [backend/](backend/)       | `127.0.0.1:8080` | Go API: auth, GPX import, tile proxy |
 | `martin`   | [mapserver/](mapserver/)   | not published    | Martin vector tile server |
 | `db`       | [postgis/](postgis/)       | `127.0.0.1:5433` | PostgreSQL 17 + PostGIS |
+| `mailpit`  | –                          | `127.0.0.1:8025` | Catches the backend's emails; web UI only, nothing is delivered |
 
 Connect with psql: `psql postgres://trackadoodle_owner:dev-owner-pw@localhost:5433/trackadoodle`.
 Defaults can be overridden with environment variables or a `.env` file (see [compose.yaml](compose.yaml)).
@@ -68,16 +71,52 @@ Defaults can be overridden with environment variables or a `.env` file (see [com
 
 The SQL in [postgis/init/](postgis/init/) only runs when the database volume is first created. After changing it, run `./dev.sh reset-db`, which deletes all imported data.
 
+To keep your data across the change that added accounts, apply it to the existing database instead:
+
+```bash
+docker compose exec -T db psql -U trackadoodle_owner -d trackadoodle -c "ALTER TABLE users ADD COLUMN password_hash text, ADD COLUMN email_verified_at timestamptz;"
+docker compose exec -T db psql -U trackadoodle_owner -d trackadoodle < postgis/init/040_auth.sql
+```
+
+Activities imported in dev mode belong to `DEV_USER_EMAIL`, which has no password. To see them after signing up, import the files again with `-user`.
+
 ## How users are kept apart
 
 A user must never see another user's tracks. The data path is built around that:
 
 1. The browser only talks to the backend. Martin has no published port and no authentication of its own, so it is only on the `data` network in [compose.yaml](compose.yaml), together with the database and the backend. The frontend container is only on the `web` network and cannot reach either of them.
-2. The backend resolves the user from the session and calls Martin with that user's id. Nothing from the client's query string is forwarded.
+2. The backend resolves the user from the session cookie (see [Accounts](#accounts)) and calls Martin with that user's id. Nothing from the client's query string is forwarded.
 3. `activities_tiles()` in PostGIS returns no tile without a valid `user_id`, and only that user's activities with one.
 4. Martin's database role can execute that function and nothing else. It cannot read the tables directly. The function does trust the `user_id` it is given, though, so anything that can call Martin can read any user's tiles. That is why point 1 matters.
 
-**Login does not exist yet.** With `AUTH_MODE=dev` every request is treated as `DEV_USER_EMAIL`, and the backend refuses to start in any other mode. OIDC (Zitadel/Strava) is the next step before this runs anywhere but localhost.
+## Accounts
+
+With `AUTH_MODE=password` (the compose default) people sign up with an email address and a password:
+
+1. **Sign up.** The backend stores the account unverified and emails a confirmation link. It answers the same whether or not the address already has an account; an existing owner gets a "you already have an account" email instead, and their account isn't touched. So sign-up can't be used to find out who has an account.
+2. **Confirm.** The link (`/verify#token=…`) opens a page that asks for the password chosen at sign-up. Only someone who knows the password *and* can read the address's email can activate the account, so registering someone else's address with your own password gets you nowhere. A wrong password leaves the link usable. Signing up again sends a new link and disables the old one.
+3. **Sign in.** Unknown emails and wrong passwords get the same error and take the same time. Unverified accounts are only told to confirm once the password is right.
+
+Details:
+
+- Passwords: argon2id ([backend/internal/password](backend/internal/password/)), 10–128 characters, no composition rules (NIST SP 800-63B).
+- Tokens in links and cookies are random 32-byte values; the database only keeps their SHA-256, so reading it gives no way in.
+- Sessions: an HttpOnly, SameSite=Lax cookie (`tad_session`), valid 30 days, deleted on sign-out. `http.CrossOriginProtection` rejects state-changing requests from other sites (CSRF).
+- Against sign-up spam, without a CAPTCHA so far: per-IP limits (5 sign-ups an hour, 10 sign-in or confirm attempts a minute), at most one email a minute and five a day per address, and a global cap on emails per hour. Unconfirmed sign-ups are deleted after 7 days.
+
+Backend settings in password mode (see [compose.yaml](compose.yaml) for the local values):
+
+| Variable | Meaning |
+|---|---|
+| `APP_BASE_URL` | Where users open the app; the base of links in emails |
+| `SMTP_ADDR`, `SMTP_TLS` | SMTP server `host:port`, and `starttls` (default), `tls` or `none` (local catcher only) |
+| `SMTP_USER`, `SMTP_PASSWORD` | Optional SMTP credentials |
+| `MAIL_FROM` | Sender, e.g. `Track-a-doodle <noreply@example.com>` |
+| `MAIL_MAX_PER_HOUR` | Cap on all emails sent (default 100) |
+| `COOKIE_SECURE` | `false` only for plain-HTTP localhost (default `true`) |
+| `TRUST_PROXY_HEADERS` | `true` when a proxy that sets `X-Forwarded-For` is the only way in |
+
+`AUTH_MODE=dev ./dev.sh` still treats every request as `DEV_USER_EMAIL`, with no sign-in. Never use it outside local development. OIDC (Zitadel/Strava) can come later, next to passwords.
 
 ## Basemap
 
