@@ -6,6 +6,7 @@ cd "$(dirname "$0")"
 
 FRONTEND_URL="http://localhost:5173"
 BACKEND_URL="http://localhost:8080"
+MAILPIT_URL="http://localhost:8025"
 # The network with the database; see compose.yaml.
 COMPOSE_NETWORK="track-a-doodle_data"
 # Go module cache shared by test runs, so dependencies are downloaded once.
@@ -21,11 +22,12 @@ Usage: ./dev.sh [command]
              or changing dependencies.
   down       Stop the stack. Keeps the database.
   status     Show the containers.
-  logs [s]   Follow logs, optionally for given services (db, martin, backend, frontend).
+  logs [s]   Follow logs, optionally for given services (db, martin, backend, frontend, mailpit).
   test       Run backend tests (including database tests) and the frontend type check.
-  import [dir] [-allow-duplicates]
+  import [dir] [-user email] [-allow-duplicates]
              Batch-import GPX files from dir (default samples/), searched
-             recursively, e.g. ./dev.sh import ~/gpx
+             recursively, e.g. ./dev.sh import ~/gpx -user you@example.com.
+             The user must have signed up (unless AUTH_MODE=dev).
   reset-db   Delete ALL data and recreate the database from postgis/init.
              Needed after changing the SQL there. Asks for confirmation.
   help       Show this help.
@@ -58,8 +60,8 @@ wait_for() {
 
 cmd_up() {
   require_docker
-  log "Building images (postgis, backend, frontend) and pulling martin"
-  docker compose pull --quiet martin
+  log "Building images (postgis, backend, frontend) and pulling martin and mailpit"
+  docker compose pull --quiet martin mailpit
   docker compose build
   log "Recreating containers"
   # --force-recreate replaces containers even if their config is unchanged,
@@ -70,7 +72,7 @@ cmd_up() {
   wait_for backend "$BACKEND_URL/api/healthz"
   wait_for frontend "$FRONTEND_URL"
   docker compose ps --format 'table {{.Service}}\t{{.Status}}\t{{.Ports}}'
-  log "Ready: open $FRONTEND_URL"
+  log "Ready: open $FRONTEND_URL (emails, e.g. sign-up links: $MAILPIT_URL)"
 }
 
 # run_backend_tests [docker run options...]: vets and tests the backend in a Go container.

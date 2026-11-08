@@ -1,6 +1,8 @@
-# Local development stack: PostGIS + Martin + Go backend + Vite frontend.
+# Local development stack: PostGIS + Martin + Go backend + Vite frontend,
+# plus Mailpit, which catches the emails the backend sends.
 #   docker compose up --build
-#   open http://localhost:5173
+#   open http://localhost:5173     (the app)
+#   open http://localhost:8025     (emails, e.g. sign-up confirmations)
 #
 # Only the frontend, the backend and (for psql) the database are published,
 # and only on 127.0.0.1. Martin stays on the internal network: tiles must go
@@ -9,7 +11,8 @@
 # Two networks keep the frontend away from the data: "data" holds the
 # database, Martin and the backend; "web" holds the backend and the frontend.
 # The frontend container runs third-party npm code and must not be able to
-# reach Martin, which serves any user's tiles to whoever asks.
+# reach Martin, which serves any user's tiles to whoever asks. A third
+# network, "mail", connects only the backend and Mailpit.
 
 name: track-a-doodle
 
@@ -53,20 +56,40 @@ services:
       DATABASE_URL: postgres://trackadoodle_app:${APP_DB_PASSWORD:-dev-app-pw}@db:5432/trackadoodle
       MARTIN_URL: http://martin:3000
       LISTEN_ADDR: ":8080"
-      # Development only: every request is treated as this user until OIDC login exists.
-      AUTH_MODE: dev
+      # "password": users sign up and sign in with email + password.
+      # "dev": every request is served as DEV_USER_EMAIL, with no login.
+      AUTH_MODE: ${AUTH_MODE:-password}
       DEV_USER_EMAIL: ${DEV_USER_EMAIL:-dev@localhost}
+      # Where users open the app; the base of links in emails.
+      APP_BASE_URL: http://localhost:5173
+      SMTP_ADDR: mailpit:1025
+      SMTP_TLS: none
+      MAIL_FROM: Track-a-doodle <noreply@track-a-doodle.test>
+      # The app is served over plain HTTP on localhost.
+      COOKIE_SECURE: "false"
+      # Requests come through the Vite proxy, which adds X-Forwarded-For.
+      TRUST_PROXY_HEADERS: "true"
     volumes:
       # Drop your own .gpx files here for batch import (see README).
       - ./samples:/samples:ro
     ports:
       - "127.0.0.1:8080:8080"
-    networks: [data, web]
+    networks: [data, web, mail]
     depends_on:
       db:
         condition: service_healthy
       martin:
         condition: service_started
+      mailpit:
+        condition: service_started
+
+  # Catches every email the backend sends and shows it at
+  # http://localhost:8025; nothing is delivered. Mailpit is MIT licensed.
+  mailpit:
+    image: axllent/mailpit:v1.32.0
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks: [mail]
 
   frontend:
     build: ./frontend
@@ -89,6 +112,7 @@ services:
 networks:
   data:
   web:
+  mail:
 
 volumes:
   pgdata:

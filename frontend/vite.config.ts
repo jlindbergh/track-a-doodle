@@ -15,7 +15,8 @@ export default defineConfig({
     watch: process.env.VITE_USE_POLLING ? { usePolling: true, interval: 300 } : undefined,
     proxy: {
       // The backend owns all data access; the browser never talks to Martin.
-      '/api': process.env.API_PROXY_TARGET ?? 'http://localhost:8080',
+      // xfwd adds X-Forwarded-For, so the backend rate-limits per client IP.
+      '/api': { target: process.env.API_PROXY_TARGET ?? 'http://localhost:8080', xfwd: true },
     },
   },
 });
