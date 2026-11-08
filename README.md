@@ -11,7 +11,7 @@ Requires Docker with Compose. Nothing else needs to be installed on the host.
 ./dev.sh
 ```
 
-This rebuilds every module and recreates all containers, keeping the database. Run it again after pulling, switching branches or changing dependencies. Then open http://localhost:5173, sign up, and import GPX files with the button, or drag and drop them onto it.
+This rebuilds every module and recreates all containers, keeping the database. Run it again after pulling, switching branches or changing dependencies. Then open http://localhost:5173, sign up, and import GPX or FIT files with the button, or drag and drop them onto it.
 
 Sign-up emails aren't delivered anywhere locally: [Mailpit](https://mailpit.axllent.org/) catches them, and they show up at http://localhost:8025. Open the confirmation link from there. See [Accounts](#accounts).
 
@@ -22,7 +22,7 @@ Other commands (`./dev.sh help` lists them all):
 | `./dev.sh down` | Stop the stack (keeps data) |
 | `./dev.sh logs [service]` | Follow logs |
 | `./dev.sh test` | Backend tests, including database tests, plus the frontend type check |
-| `./dev.sh import [dir] [-user email] [-allow-duplicates]` | Batch-import GPX files from `dir`, or [samples/](samples/) by default, for a user who has signed up |
+| `./dev.sh import [dir] [-user email] [-allow-duplicates]` | Batch-import GPX and FIT files from `dir`, or [samples/](samples/) by default, for a user who has signed up |
 | `./dev.sh migrate [cmd]` | Run [goose](https://github.com/pressly/goose) on the database, e.g. `status`, or `create add_thing sql` for a new migration |
 | `./dev.sh reset-db` | Delete all data and recreate the database, after asking |
 
@@ -32,11 +32,13 @@ To batch-import a folder, sign up in the app first, then run `./dev.sh import ~/
 
 An activity's sport comes from the GPX track's `<type>`. Files without one get a sport from a word like "run", "ride" or "hike" in a track's `<name>`, and failing that in the filename (e.g. `Morning_Run.gpx`).
 
+FIT files (what Garmin and most sports watches record) get their sport from the device, or from the sport's name on the device when it only says "generic". FIT files have no activity name, so they are named after the file. Their track, start time and duration are taken from the records with a GPS position, the same points a GPX export of the activity holds, so importing the same activity as both GPX and FIT is caught as a possible duplicate.
+
 Running it again is safe; see [Duplicate detection](#duplicate-detection).
 
 Files without a GPS track (indoor rides, treadmill runs, gym sessions) aren't imported, since there is nothing to show on the map. The UI and the batch command report how many were skipped and their activity types. Points at 0,0 count as missing a GPS fix.
 
-Files that can't be read are reported as failed and nothing from them is stored, while the rest of the batch is imported as usual. Besides files that aren't valid GPX, this covers points whose latitude or longitude isn't a number or is outside -90 to 90 / -180 to 180, and timestamps more than 68 years apart. The UI lists each failed file with the reason, for example which point is wrong, and so does the batch command.
+Files that can't be read are reported as failed and nothing from them is stored, while the rest of the batch is imported as usual. Besides files that aren't valid GPX or FIT (or are FIT courses or workouts rather than activities), this covers points whose latitude or longitude isn't a number or is outside -90 to 90 / -180 to 180, and timestamps more than 68 years apart. The UI lists each failed file with the reason, for example which point is wrong, and so does the batch command.
 
 ### Duplicate detection
 
@@ -60,7 +62,7 @@ Values that more than one layer depends on are defined in the backend and served
 | Service    | Module                     | Host port        | Notes |
 |------------|----------------------------|------------------|-------|
 | `frontend` | [frontend/](frontend/)     | `127.0.0.1:5173` | Vite dev server (React + MapLibre GL JS), proxies `/api` to the backend |
-| `backend`  | [backend/](backend/)       | `127.0.0.1:8080` | Go API: auth, GPX import, tile proxy |
+| `backend`  | [backend/](backend/)       | `127.0.0.1:8080` | Go API: auth, GPX and FIT import, tile proxy |
 | `martin`   | [mapserver/](mapserver/)   | not published    | Martin vector tile server |
 | `db`       | [postgis/](postgis/)       | `127.0.0.1:5433` | PostgreSQL 17 + PostGIS |
 | `mailpit`  | –                          | `127.0.0.1:8025` | Catches the backend's emails; web UI only, nothing is delivered |

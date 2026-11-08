@@ -61,7 +61,9 @@ func (s *Store) EnsureUserByEmail(ctx context.Context, email string) (User, erro
 
 // NewActivity is an activity about to be stored.
 type NewActivity struct {
-	Activity       activity.Parsed
+	Activity activity.Parsed
+	// Source is where the activity comes from, e.g. "gpx" or "fit".
+	Source         string
 	SourceFilename string
 	ContentSHA256  string
 }
@@ -141,9 +143,9 @@ func (s *Store) InsertActivity(ctx context.Context, userID string, na NewActivit
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO activities
 			(user_id, name, sport, started_at, duration_s, source, source_filename, content_sha256, geom)
-		VALUES ($1, $2, $3, $4, $5, 'gpx', $6, $7, ST_GeomFromText($8, 4326))
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, ST_GeomFromText($9, 4326))
 		RETURNING id, distance_m`,
-		userID, a.Name, a.Sport, a.StartedAt, a.DurationS, na.SourceFilename, na.ContentSHA256, a.WKT(),
+		userID, a.Name, a.Sport, a.StartedAt, a.DurationS, na.Source, na.SourceFilename, na.ContentSHA256, a.WKT(),
 	).Scan(&res.New.ID, &res.New.DistanceM); err != nil {
 		return InsertResult{}, fmt.Errorf("insert activity: %w", err)
 	}

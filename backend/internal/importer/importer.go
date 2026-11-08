@@ -3,6 +3,7 @@
 package importer
 
 import (
+	"cmp"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/jlindbergh/track-a-doodle/backend/internal/activity"
+	"github.com/jlindbergh/track-a-doodle/backend/internal/fitfile"
 	"github.com/jlindbergh/track-a-doodle/backend/internal/gpxfile"
 	"github.com/jlindbergh/track-a-doodle/backend/internal/store"
 )
@@ -20,16 +22,30 @@ import (
 // MaxFileSize is the largest file accepted for import.
 const MaxFileSize = 50 << 20
 
-// AcceptedExtensions returns the extensions of the files that can be imported.
+// parsers maps the extension of each file format that can be imported to
+// its parser. fallbackName names activities whose file has no name.
+var parsers = map[string]func(data []byte, fallbackName string) (activity.Parsed, error){
+	".gpx": gpxfile.Parse,
+	".fit": fitfile.Parse,
+}
+
+// AcceptedExtensions returns the extensions of the files that can be
+// imported, sorted.
 func AcceptedExtensions() []string {
-	return []string{".gpx"}
+	exts := make([]string, 0, len(parsers))
+	for ext := range parsers {
+		exts = append(exts, ext)
+	}
+	slices.Sort(exts)
+	return exts
 }
 
 // Accepts reports whether filename has one of the AcceptedExtensions,
 // ignoring case.
 func Accepts(filename string) bool {
 	ext := filepath.Ext(filename)
-	return slices.ContainsFunc(AcceptedExtensions(), func(e string) bool { return strings.EqualFold(e, ext) })
+	_, ok := parsers[strings.ToLower(ext)]
+	return ok
 }
 
 // Status is the outcome of importing one file.
@@ -49,7 +65,7 @@ const (
 	// Activity holds its name and sport.
 	StatusNoGPSTrack Status = "no_gps_track"
 	// StatusFailed means the file could not be read, or could not be stored
-	// because of a server error (see ImportGPX).
+	// because of a server error (see Import).
 	StatusFailed Status = "failed"
 )
 
@@ -77,6 +93,9 @@ type Options struct {
 	// AllowDuplicates stores possible duplicates instead of reporting them.
 	// Files that were already imported are skipped regardless.
 	AllowDuplicates bool
+	// Source is where the activity comes from, stored with it. It defaults
+	// to the file's format: "gpx" or "fit".
+	Source string
 }
 
 // Store stores activities; *store.Store implements it.
@@ -94,22 +113,30 @@ func New(s Store) *Importer {
 	return &Importer{store: s}
 }
 
-// ImportGPX parses a GPX file and stores it as an activity owned by userID.
-// Problems with the file are reported in the Result, with a nil error.
+// Import parses an activity file and stores it as an activity owned by
+// userID. The file's format is chosen by the extension of filename (see
+// AcceptedExtensions). Problems with the file are reported in the Result,
+// with a nil error.
 //
-// If the activity cannot be stored, ImportGPX returns the error together with
+// If the activity cannot be stored, Import returns the error together with
 // a StatusFailed Result that tells the user to try again, so that callers can
 // log the error and still report the file, then go on with the next one.
-func (im *Importer) ImportGPX(ctx context.Context, userID, filename string, data []byte, opts Options) (Result, error) {
+func (im *Importer) Import(ctx context.Context, userID, filename string, data []byte, opts Options) (Result, error) {
 	res := Result{File: filename}
 
+	ext := strings.ToLower(filepath.Ext(filename))
+	parse, ok := parsers[ext]
+	if !ok {
+		res.Status, res.Error = StatusFailed, fmt.Sprintf("unsupported file type; import %s files", strings.Join(AcceptedExtensions(), " or "))
+		return res, nil
+	}
 	if len(data) > MaxFileSize {
 		res.Status, res.Error = StatusFailed, "file too large"
 		return res, nil
 	}
 
 	name := strings.TrimSuffix(filepath.Base(filename), filepath.Ext(filename))
-	act, err := gpxfile.Parse(data, name)
+	act, err := parse(data, name)
 	var noTrack *activity.NoTrackError
 	if errors.As(err, &noTrack) {
 		res.Status = StatusNoGPSTrack
@@ -129,6 +156,7 @@ func (im *Importer) ImportGPX(ctx context.Context, userID, filename string, data
 	sum := sha256.Sum256(data)
 	ins, err := im.store.InsertActivity(ctx, userID, store.NewActivity{
 		Activity:       act,
+		Source:         cmp.Or(opts.Source, strings.TrimPrefix(ext, ".")),
 		SourceFilename: filepath.Base(filename),
 		ContentSHA256:  hex.EncodeToString(sum[:]),
 	}, rule)

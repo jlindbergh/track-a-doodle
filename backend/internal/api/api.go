@@ -123,7 +123,7 @@ func (s *Server) importActivities(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		res, err := s.importer.ImportGPX(r.Context(), u.ID, part.FileName(), data, opts)
+		res, err := s.importer.Import(r.Context(), u.ID, part.FileName(), data, opts)
 		if err != nil {
 			if r.Context().Err() != nil {
 				// The client is gone; nobody will read the results.

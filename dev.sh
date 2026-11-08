@@ -25,7 +25,7 @@ Usage: ./dev.sh [command]
   logs [s]   Follow logs, optionally for given services (db, martin, backend, frontend, mailpit).
   test       Run backend tests (including database tests) and the frontend type check.
   import [dir] [-user email] [-allow-duplicates]
-             Batch-import GPX files from dir (default samples/), searched
+             Batch-import GPX and FIT files from dir (default samples/), searched
              recursively, e.g. ./dev.sh import ~/gpx -user you@example.com.
              The user must have signed up (unless AUTH_MODE=dev).
   migrate [cmd]
@@ -110,7 +110,7 @@ cmd_import() {
       exit 1
     fi
     dir=$(cd "$dir" && pwd)
-    log "Importing GPX files from $dir"
+    log "Importing GPX and FIT files from $dir"
     docker compose run --rm -v "$dir":/import:ro backend import -dir /import "$@"
   else
     docker compose run --rm backend import "$@"

@@ -1,4 +1,5 @@
-// Command import batch-imports all GPX files in a directory for one user.
+// Command import batch-imports all activity files (GPX and FIT) in a
+// directory for one user.
 //
 //	docker compose run --rm backend import -dir /samples
 package main
@@ -76,7 +77,7 @@ func run() error {
 		if err != nil {
 			return err
 		}
-		res, err := im.ImportGPX(ctx, u.ID, path, data, importer.Options{AllowDuplicates: *allowDuplicates})
+		res, err := im.Import(ctx, u.ID, path, data, importer.Options{AllowDuplicates: *allowDuplicates})
 		if err != nil {
 			if ctx.Err() != nil || store.IsUnavailable(err) {
 				return err
