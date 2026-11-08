@@ -4,8 +4,15 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 
 CREATE TABLE users (
     id           uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+    -- Always stored trimmed and lowercased by the backend.
     email        text        NOT NULL UNIQUE,
     display_name text        NOT NULL DEFAULT '',
+    -- argon2id hash in PHC format. NULL for users who can't sign in with a
+    -- password (dev mode, and later OIDC-only users).
+    password_hash     text,
+    -- NULL until the user has confirmed the address. Unverified users can't
+    -- sign in and are purged after a few days.
+    email_verified_at timestamptz,
     -- Filled in once OIDC login (Zitadel/Strava) is in place.
     oidc_issuer  text,
     oidc_subject text,
