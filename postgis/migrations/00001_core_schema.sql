@@ -26,6 +26,12 @@ CREATE TABLE IF NOT EXISTS users (
     UNIQUE (oidc_issuer, oidc_subject)
 );
 
+-- Databases created by the init scripts before email + password accounts
+-- have users without these columns, and the CREATE above leaves them as is.
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS password_hash     text,
+    ADD COLUMN IF NOT EXISTS email_verified_at timestamptz;
+
 CREATE TABLE IF NOT EXISTS activities (
     id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
