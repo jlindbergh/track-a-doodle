@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -56,7 +57,7 @@ var excludedSubTypes = []string{"treadmill_running", "indoor_cycling", "virtual_
 type GarminAPI interface {
 	Token(ctx context.Context, apiKey string) (garmin.Token, error)
 	SearchActivities(ctx context.Context, token string, p garmin.SearchParams) ([]garmin.ActivitySummary, error)
-	DownloadFIT(ctx context.Context, token string, activityID int64) ([]byte, error)
+	DownloadActivityFile(ctx context.Context, token string, activityID int64) (garmin.ActivityFile, error)
 }
 
 // Store is the database access the sync needs; *store.Store implements it.
@@ -630,8 +631,8 @@ func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary,
 			return counts, errOutOfTime
 		}
 
-		data, err := withToken(ctx, r, func(token string) ([]byte, error) {
-			return r.api.DownloadFIT(ctx, token, a.ActivityID)
+		file, err := withToken(ctx, r, func(token string) (garmin.ActivityFile, error) {
+			return r.api.DownloadActivityFile(ctx, token, a.ActivityID)
 		})
 		var se *garmin.StatusError
 		if errors.As(err, &se) && se.Code == http.StatusNotFound {
@@ -657,7 +658,7 @@ func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary,
 			return counts, err
 		}
 
-		res, err := r.s.importer.Import(ctx, r.conn.UserID, id+".fit", data, importer.Options{
+		res, err := r.s.importer.Import(ctx, r.conn.UserID, file.Name, file.Data, importer.Options{
 			Source:     ProviderGarmin,
 			ExternalID: id,
 			Name:       strings.TrimSpace(a.Name),
@@ -675,7 +676,7 @@ func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary,
 		default:
 			counts.Skipped++
 		}
-		r.log.Debug("garmin activity handled", "activity_id", id, "status", res.Status)
+		r.log.Debug("garmin activity handled", "activity_id", id, "format", path.Ext(file.Name), "status", res.Status)
 		r.record(ctx, store.ProviderActivity{ExternalID: id, StartedAt: startedAt, Status: string(res.Status),
 			ActivityID: res.ActivityID, Error: res.Error})
 	}

@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -43,9 +44,9 @@ const (
 
 	// maxJSONSize caps the response to a token or search request.
 	maxJSONSize = 10 << 20
-	// MaxFITSize caps a downloaded activity file, zipped and unzipped. It
+	// MaxFileSize caps a downloaded activity file, zipped and unzipped. It
 	// matches importer.MaxFileSize.
-	MaxFITSize = 50 << 20
+	MaxFileSize = 50 << 20
 
 	// tokenFallbackLifetime is used when a token's expiry cannot be read.
 	tokenFallbackLifetime = 12 * time.Hour
@@ -313,7 +314,7 @@ func (c *Client) SearchActivities(ctx context.Context, token string, p SearchPar
 // imported. It is about that one activity alone: the others can still be
 // synced. It describes the download without holding any of its data.
 type DownloadError struct {
-	// Reason says what is wrong, e.g. "has no .fit file".
+	// Reason says what is wrong, e.g. "has no .fit or .gpx file".
 	Reason string
 	// Size is the download's size in bytes, if known.
 	Size int
@@ -371,33 +372,52 @@ func (e *DownloadError) FileNames() []string {
 	return names
 }
 
-// DownloadFIT downloads an activity's original file, which Garmin sends
-// zipped, and returns the FIT file in it. It returns a *DownloadError if the
-// download holds no FIT file.
-func (c *Client) DownloadFIT(ctx context.Context, token string, activityID int64) ([]byte, error) {
-	body, err := c.do(ctx, http.MethodGet, downloadPath+strconv.FormatInt(activityID, 10), nil, "Bearer "+token, MaxFITSize)
+// ActivityFile is an activity's file, ready for the importer.
+type ActivityFile struct {
+	// Name is "<activity id>.fit" or "<activity id>.gpx"; the importer
+	// picks its parser by the extension.
+	Name string
+	Data []byte
+}
+
+// importableExts are the file types DownloadActivityFile takes from a zip,
+// in order of preference: FIT has the most detail.
+var importableExts = []string{".fit", ".gpx"}
+
+// DownloadActivityFile downloads an activity's original file, which Garmin
+// sends zipped, and returns the FIT or GPX file in it. The original file is
+// whatever reached Garmin: FIT from Garmin devices, GPX or TCX from uploads.
+// It returns a *DownloadError if the download holds neither FIT nor GPX.
+func (c *Client) DownloadActivityFile(ctx context.Context, token string, activityID int64) (ActivityFile, error) {
+	id := strconv.FormatInt(activityID, 10)
+	body, err := c.do(ctx, http.MethodGet, downloadPath+id, nil, "Bearer "+token, MaxFileSize)
 	if errors.Is(err, errTooLarge) {
-		return nil, &DownloadError{Reason: fmt.Sprintf("is larger than %d bytes", MaxFITSize)}
+		return ActivityFile{}, &DownloadError{Reason: fmt.Sprintf("is larger than %d bytes", MaxFileSize)}
 	}
 	if err != nil {
-		return nil, unauthorized(err)
+		return ActivityFile{}, unauthorized(err)
 	}
-	return fitFromDownload(body)
+	data, ext, err := fileFromDownload(body)
+	if err != nil {
+		return ActivityFile{}, err
+	}
+	return ActivityFile{Name: id + ext, Data: data}, nil
 }
 
 // headSize is how much of a download that isn't a zip DownloadError shows.
 const headSize = 16
 
-// fitFromDownload returns the first .fit file in a zip archive, or data
-// itself if it already is a FIT file. It returns a *DownloadError otherwise.
-func fitFromDownload(data []byte) ([]byte, error) {
+// fileFromDownload returns data itself if it is a FIT file, or else the
+// first file in the zip archive data whose type is in importableExts, along
+// with that type's extension. It returns a *DownloadError otherwise.
+func fileFromDownload(data []byte) ([]byte, string, error) {
 	if isFIT(data) {
-		return data, nil
+		return data, ".fit", nil
 	}
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		head := data[:min(len(data), headSize)]
-		return nil, &DownloadError{Reason: "is neither a zip nor a FIT file", Size: len(data), Head: fmt.Sprintf("%q", head), Err: err}
+		return nil, "", &DownloadError{Reason: "is neither a zip nor a FIT file", Size: len(data), Head: fmt.Sprintf("%q", head), Err: err}
 	}
 	entries := make([]ZipEntry, len(zr.File))
 	for i, f := range zr.File {
@@ -406,29 +426,31 @@ func fitFromDownload(data []byte) ([]byte, error) {
 	fail := func(reason string, err error) error {
 		return &DownloadError{Reason: reason, Size: len(data), Entries: entries, Err: err}
 	}
-	for _, f := range zr.File {
-		if !strings.EqualFold(path.Ext(f.Name), ".fit") {
+	for _, ext := range importableExts {
+		i := slices.IndexFunc(zr.File, func(f *zip.File) bool { return strings.EqualFold(path.Ext(f.Name), ext) })
+		if i < 0 {
 			continue
 		}
-		if f.UncompressedSize64 > MaxFITSize {
-			return nil, fail("has a .fit file that is too large", nil)
+		f := zr.File[i]
+		if f.UncompressedSize64 > MaxFileSize {
+			return nil, "", fail("has a "+ext+" file that is too large", nil)
 		}
 		r, err := f.Open()
 		if err != nil {
-			return nil, fail("could not be unzipped", err)
+			return nil, "", fail("could not be unzipped", err)
 		}
 		defer r.Close()
 		// The size in the zip header could be wrong; don't trust it.
-		fit, err := io.ReadAll(io.LimitReader(r, MaxFITSize+1))
+		file, err := io.ReadAll(io.LimitReader(r, MaxFileSize+1))
 		if err != nil {
-			return nil, fail("could not be unzipped", err)
+			return nil, "", fail("could not be unzipped", err)
 		}
-		if len(fit) > MaxFITSize {
-			return nil, fail("has a .fit file that is too large", nil)
+		if len(file) > MaxFileSize {
+			return nil, "", fail("has a "+ext+" file that is too large", nil)
 		}
-		return fit, nil
+		return file, ext, nil
 	}
-	return nil, fail("has no .fit file", nil)
+	return nil, "", fail("has no .fit or .gpx file", nil)
 }
 
 // isFIT reports whether data starts with a FIT file header.
