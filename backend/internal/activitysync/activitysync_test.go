@@ -38,6 +38,8 @@ type fakeGarmin struct {
 	rejectTokens map[string]bool
 	// searchErr, if set, is returned by every search.
 	searchErr error
+	// downloadErrs maps activity ids to the error their download returns.
+	downloadErrs map[int64]error
 	tokens    int
 	downloads []int64
 	searches  []garmin.SearchParams
@@ -49,7 +51,7 @@ type fakeActivity struct {
 }
 
 func newFakeGarmin() *fakeGarmin {
-	return &fakeGarmin{accounts: map[string][]fakeActivity{}, rejectTokens: map[string]bool{}}
+	return &fakeGarmin{accounts: map[string][]fakeActivity{}, rejectTokens: map[string]bool{}, downloadErrs: map[int64]error{}}
 }
 
 func (f *fakeGarmin) Token(_ context.Context, apiKey string) (garmin.Token, error) {
@@ -115,6 +117,9 @@ func (f *fakeGarmin) DownloadFIT(_ context.Context, token string, id int64) ([]b
 		return nil, err
 	}
 	f.downloads = append(f.downloads, id)
+	if err := f.downloadErrs[id]; err != nil {
+		return nil, err
+	}
 	for _, a := range acts {
 		if a.summary.ActivityID == id {
 			return a.fit, nil
@@ -321,6 +326,54 @@ func TestBackfillImportsEverythingOnce(t *testing.T) {
 	e.sync(t, u)
 	if got := e.activities(t, u); got["Sixth run"] == "" {
 		t.Errorf("activities = %v, want the sixth run", got)
+	}
+}
+
+func TestUnusableDownloadFailsOnlyThatActivity(t *testing.T) {
+	e := newTestEnv(t)
+	u := e.user(t)
+	const key = "key-unusable"
+	e.garmin.add(t, key, 1, "First run", day, 59.30)
+	e.garmin.add(t, key, 2, "Uploaded as TCX", day.Add(24*time.Hour), 59.31)
+	e.garmin.add(t, key, 3, "Third run", day.Add(48*time.Hour), 59.32)
+	e.garmin.downloadErrs[2] = &garmin.DownloadError{Reason: "has no .fit file", Entries: []garmin.ZipEntry{{Name: "2.tcx", Size: 100}}}
+
+	ctx := context.Background()
+	if _, err := e.svc.ConnectGarmin(ctx, u, key, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.StartBackfill(ctx, u, ProviderGarmin); err != nil {
+		t.Fatal(err)
+	}
+	c := e.syncUntilIdle(t, u)
+
+	if c.Status != store.ConnectionActive || c.LastError != nil {
+		t.Errorf("status = %s, last error = %v; want active without an error", c.Status, c.LastError)
+	}
+	if c.BackfillStatus != store.BackfillDone || c.BackfillImported != 2 || c.BackfillFailed != 1 {
+		t.Errorf("backfill = %s, %d imported, %d failed; want done, 2 and 1", c.BackfillStatus, c.BackfillImported, c.BackfillFailed)
+	}
+	if got := e.activities(t, u); len(got) != 2 || got["First run"] == "" || got["Third run"] == "" {
+		t.Errorf("activities = %v, want the first and third runs", got)
+	}
+	handled, err := e.st.HandledProviderActivities(ctx, c.ID, []string{"2"})
+	if err != nil || !handled["2"] {
+		t.Errorf("activity 2 handled = %v (%v), want it recorded", handled["2"], err)
+	}
+
+	// The unusable file isn't downloaded again.
+	downloads := len(e.garmin.downloads)
+	e.sync(t, u)
+	if len(e.garmin.downloads) != downloads {
+		t.Errorf("downloads went from %d to %d on a poll with nothing new", downloads, len(e.garmin.downloads))
+	}
+}
+
+func TestUnusableFileMessage(t *testing.T) {
+	de := &garmin.DownloadError{Reason: "has no .fit file", Entries: []garmin.ZipEntry{{Name: "2.tcx", Size: 100}}}
+	want := "Garmin's file for this activity can't be imported: the download has no .fit file (it holds 2.tcx)"
+	if got := unusableFileMessage(de); got != want {
+		t.Errorf("message = %q, want %q", got, want)
 	}
 }
 
