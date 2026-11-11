@@ -596,8 +596,9 @@ func (r *syncRun) poll(ctx context.Context) error {
 
 // importPage downloads and imports the activities in page that haven't been
 // handled before and that keep (if not nil) accepts by start time, and
-// records what came of each. It stops at the first error that isn't about
-// one activity alone, returning the counts so far.
+// records what came of each. An activity whose file is missing or can't be
+// used is recorded as failed and passed over. importPage stops at the first
+// error that isn't about one activity alone, returning the counts so far.
 func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary, keep func(time.Time) bool) (store.BackfillProgress, error) {
 	var counts store.BackfillProgress
 	ids := make([]string, len(page))
@@ -640,6 +641,18 @@ func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary,
 				Error: "Garmin has no file for this activity"})
 			continue
 		}
+		var de *garmin.DownloadError
+		if errors.As(err, &de) {
+			// The file can't be imported, now or next time; don't let it hold
+			// up the rest.
+			counts.Failed++
+			r.log.Error("garmin activity file unusable", "activity_id", id, "started_at", startedAt,
+				"activity_type", a.ActivityType.TypeKey, "download_size", de.Size, "download_entries", de.Entries,
+				"download_head", de.Head, "err", err)
+			r.record(ctx, store.ProviderActivity{ExternalID: id, StartedAt: startedAt, Status: string(importer.StatusFailed),
+				Error: unusableFileMessage(de)})
+			continue
+		}
 		if err != nil {
 			return counts, err
 		}
@@ -667,6 +680,16 @@ func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary,
 			ActivityID: res.ActivityID, Error: res.Error})
 	}
 	return counts, nil
+}
+
+// unusableFileMessage tells the user why an activity's file from Garmin
+// wasn't imported.
+func unusableFileMessage(de *garmin.DownloadError) string {
+	msg := "Garmin's file for this activity can't be imported: the download " + de.Reason
+	if names := de.FileNames(); len(names) > 0 {
+		msg += " (it holds " + strings.Join(names, ", ") + ")"
+	}
+	return msg
 }
 
 // record records what came of an activity. If that fails the activity is

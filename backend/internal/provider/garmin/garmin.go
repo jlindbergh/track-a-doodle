@@ -72,6 +72,10 @@ var ErrInvalidKey = errors.New("garmin: the API key was rejected")
 // valid.
 var ErrUnauthorized = errors.New("garmin: the access token was rejected")
 
+// errTooLarge means a response was larger than the request allowed. It isn't
+// retried.
+var errTooLarge = errors.New("response too large")
+
 // StatusError is an unexpected HTTP status from Garmin.
 type StatusError struct {
 	Method, Path string
@@ -305,49 +309,126 @@ func (c *Client) SearchActivities(ctx context.Context, token string, p SearchPar
 	return out, nil
 }
 
+// DownloadError means an activity's download holds no file that can be
+// imported. It is about that one activity alone: the others can still be
+// synced. It describes the download without holding any of its data.
+type DownloadError struct {
+	// Reason says what is wrong, e.g. "has no .fit file".
+	Reason string
+	// Size is the download's size in bytes, if known.
+	Size int
+	// Entries lists the files in the download, if it is a zip.
+	Entries []ZipEntry
+	// Head is the start of the download, quoted, if it isn't a zip. It
+	// tells an error page from an XML file without logging any track data.
+	Head string
+	// Err is the underlying error, if any.
+	Err error
+}
+
+// ZipEntry is a file in a downloaded zip.
+type ZipEntry struct {
+	Name string
+	// Size is the uncompressed size the zip states.
+	Size uint64
+}
+
+func (e ZipEntry) String() string { return fmt.Sprintf("%s (%d bytes)", e.Name, e.Size) }
+
+func (e *DownloadError) Error() string {
+	var details []string
+	if e.Size > 0 {
+		details = append(details, fmt.Sprintf("%d bytes", e.Size))
+	}
+	if len(e.Entries) > 0 {
+		names := make([]string, len(e.Entries))
+		for i, f := range e.Entries {
+			names[i] = f.String()
+		}
+		details = append(details, "zip holds "+strings.Join(names, ", "))
+	}
+	if e.Head != "" {
+		details = append(details, "starts with "+e.Head)
+	}
+	msg := "garmin: the download " + e.Reason
+	if len(details) > 0 {
+		msg += " (" + strings.Join(details, "; ") + ")"
+	}
+	if e.Err != nil {
+		msg += ": " + e.Err.Error()
+	}
+	return msg
+}
+
+func (e *DownloadError) Unwrap() error { return e.Err }
+
+// FileNames returns the names of the files in the download, if it is a zip.
+func (e *DownloadError) FileNames() []string {
+	names := make([]string, len(e.Entries))
+	for i, f := range e.Entries {
+		names[i] = f.Name
+	}
+	return names
+}
+
 // DownloadFIT downloads an activity's original file, which Garmin sends
-// zipped, and returns the FIT file in it.
+// zipped, and returns the FIT file in it. It returns a *DownloadError if the
+// download holds no FIT file.
 func (c *Client) DownloadFIT(ctx context.Context, token string, activityID int64) ([]byte, error) {
 	body, err := c.do(ctx, http.MethodGet, downloadPath+strconv.FormatInt(activityID, 10), nil, "Bearer "+token, MaxFITSize)
+	if errors.Is(err, errTooLarge) {
+		return nil, &DownloadError{Reason: fmt.Sprintf("is larger than %d bytes", MaxFITSize)}
+	}
 	if err != nil {
 		return nil, unauthorized(err)
 	}
 	return fitFromDownload(body)
 }
 
+// headSize is how much of a download that isn't a zip DownloadError shows.
+const headSize = 16
+
 // fitFromDownload returns the first .fit file in a zip archive, or data
-// itself if it already is a FIT file.
+// itself if it already is a FIT file. It returns a *DownloadError otherwise.
 func fitFromDownload(data []byte) ([]byte, error) {
 	if isFIT(data) {
 		return data, nil
 	}
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
-		return nil, fmt.Errorf("garmin: download is neither a zip nor a FIT file: %w", err)
+		head := data[:min(len(data), headSize)]
+		return nil, &DownloadError{Reason: "is neither a zip nor a FIT file", Size: len(data), Head: fmt.Sprintf("%q", head), Err: err}
+	}
+	entries := make([]ZipEntry, len(zr.File))
+	for i, f := range zr.File {
+		entries[i] = ZipEntry{Name: f.Name, Size: f.UncompressedSize64}
+	}
+	fail := func(reason string, err error) error {
+		return &DownloadError{Reason: reason, Size: len(data), Entries: entries, Err: err}
 	}
 	for _, f := range zr.File {
 		if !strings.EqualFold(path.Ext(f.Name), ".fit") {
 			continue
 		}
 		if f.UncompressedSize64 > MaxFITSize {
-			return nil, fmt.Errorf("garmin: %s is too large (%d bytes)", f.Name, f.UncompressedSize64)
+			return nil, fail("has a .fit file that is too large", nil)
 		}
 		r, err := f.Open()
 		if err != nil {
-			return nil, fmt.Errorf("garmin: open %s: %w", f.Name, err)
+			return nil, fail("could not be unzipped", err)
 		}
 		defer r.Close()
 		// The size in the zip header could be wrong; don't trust it.
 		fit, err := io.ReadAll(io.LimitReader(r, MaxFITSize+1))
 		if err != nil {
-			return nil, fmt.Errorf("garmin: unzip %s: %w", f.Name, err)
+			return nil, fail("could not be unzipped", err)
 		}
 		if len(fit) > MaxFITSize {
-			return nil, fmt.Errorf("garmin: %s is too large", f.Name)
+			return nil, fail("has a .fit file that is too large", nil)
 		}
 		return fit, nil
 	}
-	return nil, errors.New("garmin: the download has no .fit file")
+	return nil, fail("has no .fit file", nil)
 }
 
 // isFIT reports whether data starts with a FIT file header.
@@ -394,7 +475,8 @@ func (c *Client) do(ctx context.Context, method, p string, query url.Values, aut
 		if errors.As(err, &se) {
 			se.Method, se.Path = method, p
 		}
-		retryable := se == nil || se.Code == http.StatusTooManyRequests || se.Code >= 500
+		// A response too large now is too large next time too.
+		retryable := (se == nil && !errors.Is(err, errTooLarge)) || (se != nil && (se.Code == http.StatusTooManyRequests || se.Code >= 500))
 		attrs := append(logAttrs, "attempt", attempt, "max_attempts", c.maxAttempts, "duration", time.Since(started))
 		if se != nil {
 			attrs = append(attrs, "status", se.Code)
@@ -470,7 +552,7 @@ func (c *Client) send(ctx context.Context, method, u, authorization string, maxS
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if int64(len(body)) > maxSize {
-		return nil, fmt.Errorf("response larger than %d bytes", maxSize)
+		return nil, fmt.Errorf("%w: more than %d bytes", errTooLarge, maxSize)
 	}
 	return body, nil
 }
