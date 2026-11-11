@@ -23,7 +23,7 @@ Garmin's Connect Developer Program was closed to new applicants from about March
 Base URL: `https://personal.connectapi.garmin.com`. The [swagger docs](https://developer.garmin.com/gc-developer-program/personal/swagger-docs/) list the endpoints.
 
 - **Key.** The user creates it at <https://connect.garmin.com/app/settings/personalApiToken>, with an expiry of 30, 90 or 180 days or a year. It is shown once.
-- **Token.** `POST /personalapitoken-service/personal-api/personal-api-key/token` with `Authorization: ApiKey <key>` returns a raw JWT, valid for about 24 hours. There is no refresh token, so the backend makes a new one from the key.
+- **Token.** `POST /personalapitoken-service/personal-api/personal-api-key/token` with `Authorization: ApiKey <key>` returns a raw JWT as `text/plain`, valid for about 24 hours. There is no refresh token, so the backend makes a new one from the key. Garmin answers `406 Not Acceptable` to an `Accept` header that leaves out the type an endpoint sends, but only for a valid key, since a wrong key gets `401` first. So the client sends `Accept: */*` with every request, as curl does, and checks the responses by their content.
 - **Activity search.** `GET /activitylist-service/activities/search/activities` with `Authorization: Bearer <token>`. Parameters:
   - `start` (offset) and `limit` (default 99). An empty array means there are no more.
   - `sortOrder` `asc`/`desc`, by local start time.
@@ -36,7 +36,7 @@ Base URL: `https://personal.connectapi.garmin.com`. The [swagger docs](https://d
 
 Checked with a real key:
 
-- The token response is a raw JWT.
+- The token response is a raw JWT, sent as `text/plain`. Asking for it with `Accept: application/json, application/octet-stream, application/zip` gets a `406`; with `text/plain`, `*/*` or no `Accept` header it works.
 - The search returns summaries with `activityId`, `activityName`, `startTimeGMT`/`startTimeLocal` (`2026-11-08 10:30:35`), `activityType.typeKey`, `distance`, `duration`, `hasPolyline`, `startLatitude`.
 - `?start=0&limit=1&sortOrder=asc&requiredField=startLatitude` returns the account's first activity with a GPS track, skipping an earlier strength workout without GPS. So **the whole history is reachable**, and `requiredField=startLatitude` leaves out activities without GPS.
 - The download returns a zipped FIT file.
