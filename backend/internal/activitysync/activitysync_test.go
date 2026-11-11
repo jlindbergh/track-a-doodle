@@ -40,14 +40,14 @@ type fakeGarmin struct {
 	searchErr error
 	// downloadErrs maps activity ids to the error their download returns.
 	downloadErrs map[int64]error
-	tokens    int
-	downloads []int64
-	searches  []garmin.SearchParams
+	tokens       int
+	downloads    []int64
+	searches     []garmin.SearchParams
 }
 
 type fakeActivity struct {
 	summary garmin.ActivitySummary
-	fit     []byte
+	file    garmin.ActivityFile
 }
 
 func newFakeGarmin() *fakeGarmin {
@@ -109,23 +109,23 @@ func (f *fakeGarmin) SearchActivities(_ context.Context, token string, p garmin.
 	return out, nil
 }
 
-func (f *fakeGarmin) DownloadFIT(_ context.Context, token string, id int64) ([]byte, error) {
+func (f *fakeGarmin) DownloadActivityFile(_ context.Context, token string, id int64) (garmin.ActivityFile, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	acts, err := f.account(token)
 	if err != nil {
-		return nil, err
+		return garmin.ActivityFile{}, err
 	}
 	f.downloads = append(f.downloads, id)
 	if err := f.downloadErrs[id]; err != nil {
-		return nil, err
+		return garmin.ActivityFile{}, err
 	}
 	for _, a := range acts {
 		if a.summary.ActivityID == id {
-			return a.fit, nil
+			return a.file, nil
 		}
 	}
-	return nil, &garmin.StatusError{Code: 404}
+	return garmin.ActivityFile{}, &garmin.StatusError{Code: 404}
 }
 
 // add gives the account with apiKey an activity starting at start, with a
@@ -140,7 +140,7 @@ func (f *fakeGarmin) add(t *testing.T, apiKey string, id int64, name string, sta
 			ActivityID: id, Name: name, StartTimeGMT: start.UTC().Format(time.DateTime),
 			ActivityType: garmin.ActivityType{TypeKey: "running"}, HasPolyline: true, StartLatitude: &lat,
 		},
-		fit: encodeFIT(t, start, lat0),
+		file: garmin.ActivityFile{Name: strconv.FormatInt(id, 10) + ".fit", Data: encodeFIT(t, start, lat0)},
 	})
 }
 
@@ -336,7 +336,7 @@ func TestUnusableDownloadFailsOnlyThatActivity(t *testing.T) {
 	e.garmin.add(t, key, 1, "First run", day, 59.30)
 	e.garmin.add(t, key, 2, "Uploaded as TCX", day.Add(24*time.Hour), 59.31)
 	e.garmin.add(t, key, 3, "Third run", day.Add(48*time.Hour), 59.32)
-	e.garmin.downloadErrs[2] = &garmin.DownloadError{Reason: "has no .fit file", Entries: []garmin.ZipEntry{{Name: "2.tcx", Size: 100}}}
+	e.garmin.downloadErrs[2] = &garmin.DownloadError{Reason: "has no .fit or .gpx file", Entries: []garmin.ZipEntry{{Name: "2.tcx", Size: 100}}}
 
 	ctx := context.Background()
 	if _, err := e.svc.ConnectGarmin(ctx, u, key, nil); err != nil {
@@ -369,9 +369,42 @@ func TestUnusableDownloadFailsOnlyThatActivity(t *testing.T) {
 	}
 }
 
+func TestBackfillImportsGPXOriginals(t *testing.T) {
+	e := newTestEnv(t)
+	u := e.user(t)
+	const key = "key-gpx"
+	e.garmin.add(t, key, 1, "First run", day, 59.30)
+	e.garmin.add(t, key, 2, "Uploaded as GPX", day.Add(24*time.Hour), 59.31)
+	e.garmin.accounts[key][1].file = garmin.ActivityFile{Name: "2.gpx", Data: []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="test" xmlns="http://www.topografix.com/GPX/1/1">
+  <trk><trkseg>
+    <trkpt lat="59.3100" lon="18.0000"><time>2025-03-02T07:00:00Z</time></trkpt>
+    <trkpt lat="59.3110" lon="18.0010"><time>2025-03-02T07:05:00Z</time></trkpt>
+    <trkpt lat="59.3120" lon="18.0020"><time>2025-03-02T07:10:00Z</time></trkpt>
+  </trkseg></trk>
+</gpx>`)}
+
+	ctx := context.Background()
+	if _, err := e.svc.ConnectGarmin(ctx, u, key, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.StartBackfill(ctx, u, ProviderGarmin); err != nil {
+		t.Fatal(err)
+	}
+	c := e.syncUntilIdle(t, u)
+
+	if c.BackfillStatus != store.BackfillDone || c.BackfillImported != 2 || c.BackfillFailed != 0 {
+		t.Errorf("backfill = %s, %d imported, %d failed; want done, 2 and 0", c.BackfillStatus, c.BackfillImported, c.BackfillFailed)
+	}
+	got := e.activities(t, u)
+	if _, ok := got["Uploaded as GPX"]; !ok || len(got) != 2 {
+		t.Errorf("activities = %v, want both, the GPX one under Garmin's name", got)
+	}
+}
+
 func TestUnusableFileMessage(t *testing.T) {
-	de := &garmin.DownloadError{Reason: "has no .fit file", Entries: []garmin.ZipEntry{{Name: "2.tcx", Size: 100}}}
-	want := "Garmin's file for this activity can't be imported: the download has no .fit file (it holds 2.tcx)"
+	de := &garmin.DownloadError{Reason: "has no .fit or .gpx file", Entries: []garmin.ZipEntry{{Name: "2.tcx", Size: 100}}}
+	want := "Garmin's file for this activity can't be imported: the download has no .fit or .gpx file (it holds 2.tcx)"
 	if got := unusableFileMessage(de); got != want {
 		t.Errorf("message = %q, want %q", got, want)
 	}
@@ -385,7 +418,7 @@ func TestBackfillSkipsActivitiesAlreadyImportedAsFiles(t *testing.T) {
 	ctx := context.Background()
 
 	// The same activity uploaded earlier as a file.
-	if res, err := importer.New(e.st).Import(ctx, u, "run.fit", e.garmin.accounts[key][0].fit, importer.Options{}); err != nil || res.Status != importer.StatusImported {
+	if res, err := importer.New(e.st).Import(ctx, u, "run.fit", e.garmin.accounts[key][0].file.Data, importer.Options{}); err != nil || res.Status != importer.StatusImported {
 		t.Fatalf("upload: %+v, %v", res, err)
 	}
 	if _, err := e.svc.ConnectGarmin(ctx, u, key, nil); err != nil {
