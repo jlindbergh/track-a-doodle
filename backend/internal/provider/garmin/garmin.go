@@ -51,6 +51,18 @@ const (
 	tokenFallbackLifetime = 12 * time.Hour
 )
 
+// accept is the Accept header of every request. It accepts any type on
+// purpose. Garmin negotiates on Accept and answers 406 Not Acceptable when
+// the header leaves out the type an endpoint responds with: an earlier
+// "application/json, application/octet-stream, application/zip" made every
+// token request fail, since the token is sent as text/plain. The response
+// types aren't documented, no endpoint is known to offer a choice of
+// formats, and every response is checked by its content (a JWT, JSON, a zip
+// or FIT file), so naming types only risks another 406. It is the header
+// curl sends with the calls in Garmin's docs, which is what has been tried
+// against the real API; sending no header would mean the same.
+const accept = "*/*"
+
 // ErrInvalidKey is returned by Token when Garmin rejects the API key: it is
 // wrong, expired or has been deleted.
 var ErrInvalidKey = errors.New("garmin: the API key was rejected")
@@ -440,7 +452,7 @@ func (c *Client) send(ctx context.Context, method, u, authorization string, maxS
 		return nil, err
 	}
 	req.Header.Set("Authorization", authorization)
-	req.Header.Set("Accept", "application/json, application/octet-stream, application/zip")
+	req.Header.Set("Accept", accept)
 	req.Header.Set("User-Agent", "track-a-doodle")
 	resp, err := c.http.Do(req)
 	if err != nil {

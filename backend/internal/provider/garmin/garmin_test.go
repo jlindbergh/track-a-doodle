@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -125,6 +126,72 @@ func TestTokenInvalidKey(t *testing.T) {
 	c, _ := newTestClient(srv)
 	if _, err := c.Token(context.Background(), "bad"); !errors.Is(err, ErrInvalidKey) {
 		t.Errorf("err = %v, want ErrInvalidKey", err)
+	}
+}
+
+// accepts reports whether an Accept header allows mediaType.
+func accepts(header, mediaType string) bool {
+	typ, _, _ := strings.Cut(mediaType, "/")
+	for _, part := range strings.Split(header, ",") {
+		mt, params, err := mime.ParseMediaType(strings.TrimSpace(part))
+		if err != nil || params["q"] == "0" {
+			continue
+		}
+		if mt == "*/*" || mt == typ+"/*" || mt == mediaType {
+			return true
+		}
+	}
+	return false
+}
+
+// TestAcceptHeaders checks that every request accepts the type Garmin answers
+// with. Garmin answers 406 Not Acceptable otherwise, as it did for the token,
+// which it sends as text/plain. The download is tested as both types Garmin
+// might send a zip as.
+func TestAcceptHeaders(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		body        []byte
+		call        func(*Client) error
+	}{
+		{"token", "text/plain", []byte(jwt(`{"exp":1794200000}`)), func(c *Client) error {
+			_, err := c.Token(context.Background(), "k")
+			return err
+		}},
+		{"search", "application/json", []byte("[]"), func(c *Client) error {
+			_, err := c.SearchActivities(context.Background(), "tok", SearchParams{})
+			return err
+		}},
+		{"download", "application/zip", nil, func(c *Client) error {
+			_, err := c.DownloadFIT(context.Background(), "tok", 1)
+			return err
+		}},
+		{"download as octet-stream", "application/octet-stream", nil, func(c *Client) error {
+			_, err := c.DownloadFIT(context.Background(), "tok", 1)
+			return err
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := tt.body
+			if body == nil {
+				body = zipped(t, map[string][]byte{"1_ACTIVITY.fit": fitHeader})
+			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !accepts(r.Header.Get("Accept"), tt.contentType) {
+					w.WriteHeader(http.StatusNotAcceptable)
+					return
+				}
+				w.Header().Set("Content-Type", tt.contentType)
+				w.Write(body)
+			}))
+			defer srv.Close()
+			c, _ := newTestClient(srv)
+			if err := tt.call(c); err != nil {
+				t.Errorf("got %v, want the %s response accepted", err, tt.contentType)
+			}
+		})
 	}
 }
 
