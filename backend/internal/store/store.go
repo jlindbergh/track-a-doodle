@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -211,6 +212,36 @@ func findDuplicate(ctx context.Context, tx pgx.Tx, userID string, f activity.Fac
 		}
 	}
 	return nil, activity.Comparison{}, nil
+}
+
+// ActivitiesStartingNear returns userID's activities that start at most
+// earlier before or later after any of starts, with where each starts,
+// oldest first. It finds the candidates for activity.SummaryRule.
+func (s *Store) ActivitiesStartingNear(ctx context.Context, userID string, starts []time.Time, earlier, later time.Duration) ([]activity.Located, error) {
+	if len(starts) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT DISTINCT a.id, a.name, a.sport, a.started_at, a.duration_s, a.distance_m,
+		       ST_Y(a.start_pt), ST_X(a.start_pt)
+		  FROM unnest($2::timestamptz[]) AS s (t)
+		  JOIN activities a
+		    ON a.user_id = $1
+		   AND a.started_at BETWEEN s.t - make_interval(secs => $3) AND s.t + make_interval(secs => $4)
+		 ORDER BY a.started_at`,
+		userID, starts, earlier.Seconds(), later.Seconds())
+	if err != nil {
+		return nil, fmt.Errorf("find activities starting near: %w", err)
+	}
+	located, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (activity.Located, error) {
+		var l activity.Located
+		err := row.Scan(append(factsFields(&l.Facts), &l.Start.Lat, &l.Start.Lon)...)
+		return l, err
+	})
+	if err != nil {
+		return nil, fmt.Errorf("find activities starting near: %w", err)
+	}
+	return located, nil
 }
 
 // factsColumns selects the columns of activity.Facts, in the order factsFields

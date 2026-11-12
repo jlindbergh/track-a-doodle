@@ -193,11 +193,34 @@ func TestProviderActivities(t *testing.T) {
 		t.Errorf("counts = %+v, %v; want 1 of each, the latest before %v on %v", counts, err, t3, t2)
 	}
 
-	// Deleting the activity keeps the record, so it isn't imported again.
+	// A match found from the service's summary records what it matched.
+	if err := s.RecordProviderActivity(ctx, c.ID, ProviderActivity{ExternalID: "5", StartedAt: &t1,
+		Status: "possible_duplicate", MatchedActivityID: ins.New.ID, FromSummary: true}); err != nil {
+		t.Fatal(err)
+	}
+	match := func(externalID string) (matched *string, from string) {
+		t.Helper()
+		if err := s.pool.QueryRow(ctx, `SELECT matched_activity_id::text, decided_from FROM provider_activities
+			 WHERE connection_id = $1 AND external_id = $2`, c.ID, externalID).Scan(&matched, &from); err != nil {
+			t.Fatal(err)
+		}
+		return matched, from
+	}
+	if matched, from := match("5"); matched == nil || *matched != ins.New.ID || from != "summary" {
+		t.Errorf("match of 5 = %v from %q, want %s from the summary", matched, from, ins.New.ID)
+	}
+	if matched, from := match("2"); matched != nil || from != "file" {
+		t.Errorf("match of 2 = %v from %q, want none, from the file", matched, from)
+	}
+
+	// Deleting the activity keeps the records, so it isn't imported again.
 	if _, err := s.DeleteActivity(ctx, u.ID, ins.New.ID); err != nil {
 		t.Fatal(err)
 	}
-	if handled, err := s.HandledProviderActivities(ctx, c.ID, []string{"1"}); err != nil || !handled["1"] {
+	if handled, err := s.HandledProviderActivities(ctx, c.ID, []string{"1", "5"}); err != nil || !handled["1"] || !handled["5"] {
 		t.Errorf("after deleting the activity: handled = %v, %v", handled, err)
+	}
+	if matched, _ := match("5"); matched != nil {
+		t.Errorf("match of 5 after deleting the activity = %v, want none", *matched)
 	}
 }
