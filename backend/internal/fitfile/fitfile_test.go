@@ -177,3 +177,120 @@ func TestParseInvalid(t *testing.T) {
 		})
 	}
 }
+
+// spanned is a session starting at start and lasting elapsed.
+func spanned(start, elapsed time.Duration) *mesgdef.Session {
+	return mesgdef.NewSession(nil).SetSport(typedef.SportRunning).
+		SetStartTime(t0.Add(start)).SetTotalElapsedTimeScaled(elapsed.Seconds())
+}
+
+// outside is a GPS track with records before and after a session from 20 s
+// to 80 s after t0, like a file whose activity was trimmed afterwards.
+func outside() []*mesgdef.Record {
+	return []*mesgdef.Record{
+		gps(5*time.Second, 59.3200, 18.0600), // before the timer was started
+		gps(19*time.Second, 59.3250, 18.0650),
+		gps(20*time.Second, 59.3293, 18.0686),
+		gps(50*time.Second, 59.3300, 18.0700),
+		gps(80*time.Second, 59.3310, 18.0710),
+		gps(81*time.Second, 59.3315, 18.0715),  // within a second of the end
+		gps(120*time.Second, 59.3400, 18.0800), // after the timer was stopped
+	}
+}
+
+func TestParseSessionSpan(t *testing.T) {
+	tests := []struct {
+		name      string
+		sessions  []*mesgdef.Session
+		records   []*mesgdef.Record
+		wantStart time.Duration
+		wantDur   int
+		wantLen   int
+	}{
+		{
+			name:      "records before and after the session are left out",
+			sessions:  []*mesgdef.Session{spanned(20*time.Second, 60*time.Second)},
+			records:   outside(),
+			wantStart: 19 * time.Second, wantDur: 62, wantLen: 5,
+		},
+		{
+			name: "session end from its timestamp when the elapsed time is unknown",
+			sessions: []*mesgdef.Session{mesgdef.NewSession(nil).SetSport(typedef.SportRunning).
+				SetStartTime(t0.Add(20 * time.Second)).SetTimestamp(t0.Add(80 * time.Second))},
+			records:   outside(),
+			wantStart: 19 * time.Second, wantDur: 62, wantLen: 5,
+		},
+		{
+			name: "several sessions span from the first start to the last end",
+			sessions: []*mesgdef.Session{
+				spanned(50*time.Second, 30*time.Second),
+				spanned(30*time.Second, 10*time.Second),
+			},
+			records:   outside(),
+			wantStart: 50 * time.Second, wantDur: 31, wantLen: 3,
+		},
+		{
+			name:      "no sessions keeps every record",
+			sessions:  nil,
+			records:   outside(),
+			wantStart: 5 * time.Second, wantDur: 115, wantLen: 7,
+		},
+		{
+			name:      "session without an end keeps every record",
+			sessions:  []*mesgdef.Session{session(typedef.SportRunning, "")},
+			records:   outside(),
+			wantStart: 5 * time.Second, wantDur: 115, wantLen: 7,
+		},
+		{
+			name:      "fewer than two records in the session keeps every record",
+			sessions:  []*mesgdef.Session{spanned(200*time.Second, 60*time.Second)},
+			records:   outside(),
+			wantStart: 5 * time.Second, wantDur: 115, wantLen: 7,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a, err := Parse(encode(t, typedef.FileActivity, tt.sessions, tt.records), "x")
+			if err != nil {
+				t.Fatalf("Parse: %v", err)
+			}
+			if want := t0.Add(tt.wantStart); a.StartedAt == nil || !a.StartedAt.Equal(want) {
+				t.Errorf("StartedAt = %v, want %v", a.StartedAt, want)
+			}
+			if a.DurationS == nil || *a.DurationS != tt.wantDur {
+				t.Errorf("DurationS = %v, want %d", a.DurationS, tt.wantDur)
+			}
+			if len(a.Lines) != 1 || len(a.Lines[0]) != tt.wantLen {
+				t.Errorf("Lines = %v, want one line of %d points", a.Lines, tt.wantLen)
+			}
+		})
+	}
+}
+
+func TestParseChainedSessionSpan(t *testing.T) {
+	// A multisport activity recorded as two chained FIT files, each with
+	// GPS records outside its session.
+	first := encode(t, typedef.FileActivity, []*mesgdef.Session{spanned(20*time.Second, 30*time.Second)}, []*mesgdef.Record{
+		gps(0, 59.3200, 18.0600),
+		gps(20*time.Second, 59.3293, 18.0686),
+		gps(50*time.Second, 59.3300, 18.0700),
+	})
+	second := encode(t, typedef.FileActivity, []*mesgdef.Session{spanned(60*time.Second, 40*time.Second)}, []*mesgdef.Record{
+		gps(60*time.Second, 59.3310, 18.0710),
+		gps(100*time.Second, 59.3320, 18.0720),
+		gps(130*time.Second, 59.3400, 18.0800),
+	})
+	a, err := Parse(append(first, second...), "x")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if want := t0.Add(20 * time.Second); a.StartedAt == nil || !a.StartedAt.Equal(want) {
+		t.Errorf("StartedAt = %v, want %v", a.StartedAt, want)
+	}
+	if a.DurationS == nil || *a.DurationS != 80 {
+		t.Errorf("DurationS = %v, want 80", a.DurationS)
+	}
+	if len(a.Lines) != 1 || len(a.Lines[0]) != 4 {
+		t.Errorf("Lines = %v, want one line of 4 points", a.Lines)
+	}
+}
