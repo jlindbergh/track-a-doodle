@@ -129,16 +129,18 @@ func (f *fakeGarmin) DownloadActivityFile(_ context.Context, token string, id in
 }
 
 // add gives the account with apiKey an activity starting at start, with a
-// GPS track whose length depends on lat0.
+// 9-minute, 1 km GPS track north from lat0, 18°E. Its summary says so, like
+// Garmin's would.
 func (f *fakeGarmin) add(t *testing.T, apiKey string, id int64, name string, start time.Time, lat0 float64) {
 	t.Helper()
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	lat := lat0
+	lat, lon := lat0, 18.0
 	f.accounts[apiKey] = append(f.accounts[apiKey], fakeActivity{
 		summary: garmin.ActivitySummary{
 			ActivityID: id, Name: name, StartTimeGMT: start.UTC().Format(time.DateTime),
-			ActivityType: garmin.ActivityType{TypeKey: "running"}, HasPolyline: true, StartLatitude: &lat,
+			ActivityType: garmin.ActivityType{TypeKey: "running"}, HasPolyline: true,
+			StartLatitude: &lat, StartLongitude: &lon, ElapsedDuration: 540, Distance: 1000,
 		},
 		file: garmin.ActivityFile{Name: strconv.FormatInt(id, 10) + ".fit", Data: encodeFIT(t, start, lat0)},
 	})
@@ -439,6 +441,9 @@ func TestBackfillSkipsActivitiesAlreadyImportedAsFiles(t *testing.T) {
 	u := e.user(t)
 	const key = "key-duplicates"
 	e.garmin.add(t, key, 1, "Run", day, 59.30)
+	// Garmin's distance is too far off for its summary to match, so the file
+	// is downloaded and the importer finds the duplicate.
+	e.garmin.accounts[key][0].summary.Distance = 1500
 	ctx := context.Background()
 
 	// The same activity uploaded earlier as a file.
@@ -457,6 +462,59 @@ func TestBackfillSkipsActivitiesAlreadyImportedAsFiles(t *testing.T) {
 	}
 	if got := e.activities(t, u); len(got) != 1 {
 		t.Errorf("activities = %v, want just the upload", got)
+	}
+	if !slices.Equal(e.garmin.downloads, []int64{1}) {
+		t.Errorf("downloads = %v, want the activity downloaded to compare it", e.garmin.downloads)
+	}
+}
+
+func TestBackfillDoesNotDownloadActivitiesWhoseSummaryMatches(t *testing.T) {
+	e := newTestEnv(t)
+	u, other := e.user(t), e.user(t)
+	const key = "key-summary-match"
+	e.garmin.add(t, key, 1, "Uploaded before", day, 59.30)
+	e.garmin.add(t, key, 2, "Only in Garmin", day.Add(24*time.Hour), 59.31)
+	e.garmin.add(t, key, 3, "Someone else uploaded it", day.Add(48*time.Hour), 59.32)
+	e.garmin.add(t, key, 4, "Uploaded with a late GPS fix", day.Add(72*time.Hour), 59.33)
+	ctx := context.Background()
+
+	upload := func(user, filename string, a fakeActivity) {
+		t.Helper()
+		if res, err := importer.New(e.st).Import(ctx, user, filename, a.file.Data, importer.Options{}); err != nil || res.Status != importer.StatusImported {
+			t.Fatalf("upload: %+v, %v", res, err)
+		}
+	}
+	acts := e.garmin.accounts[key]
+	upload(u, "first.fit", acts[0])
+	upload(other, "third.fit", acts[2]) // another user's activities are never matched
+	// Garmin's timer started 40 s before the file's first GPS point, and
+	// its smoothed distance is 8% shorter.
+	upload(u, "fourth.fit", acts[3])
+	acts[3].summary.StartTimeGMT = day.Add(72*time.Hour - 40*time.Second).Format(time.DateTime)
+	acts[3].summary.ElapsedDuration = 555
+	acts[3].summary.Distance = 920
+
+	if _, err := e.svc.ConnectGarmin(ctx, u, key, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.StartBackfill(ctx, u, ProviderGarmin); err != nil {
+		t.Fatal(err)
+	}
+	c := e.syncUntilIdle(t, u)
+
+	if !slices.Equal(e.garmin.downloads, []int64{2, 3}) {
+		t.Errorf("downloads = %v, want only the activities the user doesn't have", e.garmin.downloads)
+	}
+	if st := e.status(t, u); c.BackfillStatus != store.BackfillDone || st.Activities != (ActivityCounts{Imported: 2, Skipped: 2}) {
+		t.Errorf("backfill = %s, activities = %+v; want done, 2 imported and 2 skipped", c.BackfillStatus, st.Activities)
+	}
+	got := e.activities(t, u)
+	if _, ok := got["Someone else uploaded it"]; !ok || len(got) != 4 {
+		t.Errorf("activities = %v, want the two uploads and the two imported", got)
+	}
+	handled, err := e.st.HandledProviderActivities(ctx, c.ID, []string{"1", "4"})
+	if err != nil || !handled["1"] || !handled["4"] {
+		t.Errorf("handled = %v (%v), want the matched activities recorded", handled, err)
 	}
 }
 

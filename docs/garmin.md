@@ -48,12 +48,37 @@ The code is in [backend/internal/provider/garmin](../backend/internal/provider/g
 1. **Connect.** The user pastes their key into the import panel. The backend checks it by asking Garmin for a token. It then stores the key and the token encrypted with AES-256-GCM under `SECRETS_KEY`, each bound to the user, in `provider_connections`.
 2. **Backfill**, only after the user agrees in a dialog that says what happens.
    - The worker pages through the search, oldest first, with `requiredField=startLatitude` and without treadmill, indoor cycling and virtual activities.
-   - It downloads each activity's file and imports it under Garmin's activity name, with the usual [duplicate rule](../README.md#duplicate-detection). So activities already imported from GPX or FIT files are skipped.
+   - First it checks Garmin's summary of each activity against the user's own activities (see [Skipping downloads](#skipping-downloads)). An activity the user already has is skipped without downloading it.
+   - It downloads each of the other activities' files and imports it under Garmin's activity name, with the usual [duplicate rule](../README.md#duplicate-detection). So activities already imported from GPX or FIT files are skipped.
    - It imports the FIT file in the download, or else the GPX file. A download with neither, for example only TCX, is recorded as failed and logged as `garmin activity file unusable`, with the activity's id, start and type and the files in the download. The backfill carries on with the next activity.
    - Every activity is recorded the moment it is handled (step 4), and the search offset (`backfill_cursor`) is saved after each page. It resumes after a restart from the last finished page, passing over what was already handled. It can be stopped, and hands over to other connections after 10 minutes of work.
    - The user sees counts of imported, skipped and failed activities, counted from those records, so they update as each activity is handled and survive starting the backfill again. Since it goes oldest first, the start date of the latest activity handled from before connecting shows how far it has come.
 3. **Poll.** Every 30 minutes it fetches activities from a day before the latest one handled. Without a finished backfill, it only imports activities from after the user connected.
-4. **Every activity handled is recorded** in `provider_activities`: imported, skipped or failed. None is downloaded twice, even after the user deletes it.
+4. **Every activity handled is recorded** in `provider_activities`: imported, skipped or failed. None is downloaded twice, even after the user deletes it. A skipped duplicate records which activity it matched (`matched_activity_id`), and whether that was decided from the downloaded file or from Garmin's summary (`decided_from`).
+
+### Skipping downloads
+
+Downloads are what make a backfill slow: one every 2 seconds, about 3.5 minutes per page of 99. Most activities of a user who has already imported their GPX or FIT files are duplicates, so the sync first compares Garmin's search result for each activity with the user's own activities, and only downloads the ones that don't match. The poll does the same.
+
+A summary matches one of the user's activities when **all** of these hold:
+
+| Garmin's field | Compared with | Tolerance |
+|---|---|---|
+| `startTimeGMT` | the activity's start time | 2 s earlier to 60 s later |
+| `startLatitude`, `startLongitude` | the track's first point | 100 m |
+| `elapsedDuration` | the activity's duration | 3% |
+| `distance` | the activity's distance | 10% |
+
+Why these fields and tolerances, measured on 1,239 Garmin activities already judged by the importer from their files:
+
+- Garmin's start time is when the timer started. A file's first GPS point can come later, while the GPS gets its fix, but it was never more than a second earlier.
+- Start positions were within 12 m for 95% of the duplicates. End positions are far less reliable (138 m for half of them), so they aren't used.
+- `elapsedDuration` spans the same time as a file's timestamps: within 2% for 95% of the duplicates. `duration` is the timer time without pauses, and isn't comparable.
+- Distances differ more, since Garmin smooths the track and the database measures the raw points: 5% for 95% of the duplicates, but 22% for 99%. So the tolerance is loose, and the other fields do most of the work.
+
+With these tolerances the check skipped 93% of the duplicates and matched no activity that wasn't one. An activity it doesn't match is downloaded and checked by the importer as before, so a miss only costs time. If a user's own files come from another device or app than Garmin's copy, for example a phone recording the same workout, they start further apart and match less often.
+
+The rule is `summaryRule` in [activitysync.go](../backend/internal/activitysync/activitysync.go). Activities imported earlier on the same page aren't compared with, so duplicates within Garmin itself are still caught by the importer.
 
 Requests are spaced at least 2 seconds apart. Throttling (429), server errors and network errors are retried with exponential backoff and Garmin's `Retry-After`. **Every failed attempt is logged** as a warning (`garmin request failed`) with the method, path, query, status or error, attempt number, retry delay and `Retry-After`. Keys and tokens are never logged. Grep the backend logs for these lines to see when and how often Garmin pushes back, and tune `MinInterval` in the client if needed.
 

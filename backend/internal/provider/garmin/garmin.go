@@ -273,12 +273,15 @@ type ActivitySummary struct {
 	StartTimeGMT   string       `json:"startTimeGMT"`
 	StartTimeLocal string       `json:"startTimeLocal"`
 	ActivityType   ActivityType `json:"activityType"`
-	// Distance is in metres, Duration in seconds.
-	Distance       float64  `json:"distance"`
-	Duration       float64  `json:"duration"`
-	HasPolyline    bool     `json:"hasPolyline"`
-	StartLatitude  *float64 `json:"startLatitude"`
-	StartLongitude *float64 `json:"startLongitude"`
+	// Distance is in metres. Duration is the timer time in seconds, without
+	// pauses; ElapsedDuration is the time from start to finish, pauses
+	// included, which is what an activity file's timestamps span.
+	Distance        float64  `json:"distance"`
+	Duration        float64  `json:"duration"`
+	ElapsedDuration float64  `json:"elapsedDuration"`
+	HasPolyline     bool     `json:"hasPolyline"`
+	StartLatitude   *float64 `json:"startLatitude"`
+	StartLongitude  *float64 `json:"startLongitude"`
 }
 
 // ActivityType is the type of an activity, e.g. "trail_running" with the
