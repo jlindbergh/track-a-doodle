@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"mime"
 	"net/http"
@@ -164,11 +165,11 @@ func TestAcceptHeaders(t *testing.T) {
 			return err
 		}},
 		{"download", "application/zip", nil, func(c *Client) error {
-			_, err := c.DownloadFIT(context.Background(), "tok", 1)
+			_, err := c.DownloadActivityFile(context.Background(), "tok", 1)
 			return err
 		}},
 		{"download as octet-stream", "application/octet-stream", nil, func(c *Client) error {
-			_, err := c.DownloadFIT(context.Background(), "tok", 1)
+			_, err := c.DownloadActivityFile(context.Background(), "tok", 1)
 			return err
 		}},
 	}
@@ -341,7 +342,7 @@ func TestDoesNotRetryClientErrors(t *testing.T) {
 	defer srv.Close()
 	c, logs := newTestClient(srv)
 
-	_, err := c.DownloadFIT(context.Background(), "tok", 42)
+	_, err := c.DownloadActivityFile(context.Background(), "tok", 42)
 	var se *StatusError
 	if !errors.As(err, &se) || se.Code != http.StatusNotFound || se.Path != downloadPath+"42" {
 		t.Fatalf("err = %v, want a 404 StatusError for the download", err)
@@ -387,18 +388,22 @@ func zipped(t *testing.T, files map[string][]byte) []byte {
 	return buf.Bytes()
 }
 
-func TestDownloadFIT(t *testing.T) {
+func TestDownloadActivityFile(t *testing.T) {
+	gpx := []byte(`<?xml version="1.0"?><gpx version="1.1"></gpx>`)
 	tests := []struct {
-		name    string
-		body    []byte
-		want    []byte
-		wantErr string
+		name     string
+		body     []byte
+		wantName string
+		want     []byte
+		wantErr  string
 	}{
-		{"zipped", zipped(t, map[string][]byte{"25007758253_ACTIVITY.fit": fitHeader}), fitHeader, ""},
-		{"upper case extension", zipped(t, map[string][]byte{"A.FIT": fitHeader}), fitHeader, ""},
-		{"plain FIT", fitHeader, fitHeader, ""},
-		{"no fit in zip", zipped(t, map[string][]byte{"readme.txt": []byte("hi")}), nil, "no .fit file"},
-		{"not a zip", []byte("<html>error</html>"), nil, "neither a zip nor a FIT file"},
+		{"zipped FIT", zipped(t, map[string][]byte{"25007758253_ACTIVITY.fit": fitHeader}), "25007758253.fit", fitHeader, ""},
+		{"upper case extension", zipped(t, map[string][]byte{"A.FIT": fitHeader}), "25007758253.fit", fitHeader, ""},
+		{"plain FIT", fitHeader, "25007758253.fit", fitHeader, ""},
+		{"zipped GPX", zipped(t, map[string][]byte{"track.gpx": gpx}), "25007758253.gpx", gpx, ""},
+		{"FIT before GPX", zipped(t, map[string][]byte{"track.gpx": gpx, "track.fit": fitHeader}), "25007758253.fit", fitHeader, ""},
+		{"only TCX", zipped(t, map[string][]byte{"1.tcx": []byte("<TrainingCenterDatabase/>")}), "", nil, "has no .fit or .gpx file"},
+		{"not a zip", []byte("<html><body>error</body></html>"), "", nil, `is neither a zip nor a FIT file (31 bytes; starts with "<html><body>erro")`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -410,25 +415,67 @@ func TestDownloadFIT(t *testing.T) {
 			}))
 			defer srv.Close()
 			c, _ := newTestClient(srv)
-			got, err := c.DownloadFIT(context.Background(), "tok", 25007758253)
+			got, err := c.DownloadActivityFile(context.Background(), "tok", 25007758253)
 			if tt.wantErr != "" {
-				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
-					t.Errorf("err = %v, want %q", err, tt.wantErr)
+				var de *DownloadError
+				if !errors.As(err, &de) || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("err = %v, want a *DownloadError with %q", err, tt.wantErr)
 				}
 				return
 			}
-			if err != nil || !bytes.Equal(got, tt.want) {
-				t.Errorf("DownloadFIT = %v, %v; want %v", got, err, tt.want)
+			if err != nil || got.Name != tt.wantName || !bytes.Equal(got.Data, tt.want) {
+				t.Errorf("DownloadActivityFile = %s %q, %v; want %s %q", got.Name, got.Data, err, tt.wantName, tt.want)
 			}
 		})
 	}
 }
 
-func TestDownloadFITTooLarge(t *testing.T) {
-	big := bytes.Repeat([]byte{0}, MaxFITSize+1)
-	if _, err := fitFromDownload(zipped(t, map[string][]byte{"big.fit": big})); err == nil || !strings.Contains(err.Error(), "too large") {
-		t.Errorf("err = %v, want too large", err)
+func TestDownloadFileTooLarge(t *testing.T) {
+	big := bytes.Repeat([]byte{0}, MaxFileSize+1)
+	var de *DownloadError
+	if _, _, err := fileFromDownload(zipped(t, map[string][]byte{"big.fit": big})); !errors.As(err, &de) || !strings.Contains(err.Error(), "too large") {
+		t.Errorf("err = %v, want a *DownloadError saying too large", err)
 	}
+}
+
+func TestDownloadLargerThanAllowedIsNotRetried(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _ = io.CopyN(w, zeros{}, MaxFileSize+1)
+	}))
+	defer srv.Close()
+	c, _ := newTestClient(srv)
+	_, err := c.DownloadActivityFile(context.Background(), "tok", 1)
+	var de *DownloadError
+	if !errors.As(err, &de) || !strings.Contains(err.Error(), "is larger than") {
+		t.Errorf("err = %v, want a *DownloadError saying it is too large", err)
+	}
+	if calls != 1 {
+		t.Errorf("calls = %d, want 1: a response too large now is too large next time", calls)
+	}
+}
+
+func TestDownloadErrorListsZipEntries(t *testing.T) {
+	_, _, err := fileFromDownload(zipped(t, map[string][]byte{"1.tcx": []byte("<TrainingCenterDatabase/>")}))
+	var de *DownloadError
+	if !errors.As(err, &de) {
+		t.Fatalf("err = %v, want a *DownloadError", err)
+	}
+	if want := []ZipEntry{{Name: "1.tcx", Size: 25}}; !reflect.DeepEqual(de.Entries, want) {
+		t.Errorf("Entries = %v, want %v", de.Entries, want)
+	}
+	if !strings.Contains(err.Error(), "zip holds 1.tcx (25 bytes)") || de.Head != "" {
+		t.Errorf("err = %v (head %q), want the zip's files and no head", err, de.Head)
+	}
+}
+
+// zeros is an endless reader of zero bytes.
+type zeros struct{}
+
+func (zeros) Read(p []byte) (int, error) {
+	clear(p)
+	return len(p), nil
 }
 
 func TestRetryAfterParsing(t *testing.T) {

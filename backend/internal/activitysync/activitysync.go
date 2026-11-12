@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -56,7 +57,7 @@ var excludedSubTypes = []string{"treadmill_running", "indoor_cycling", "virtual_
 type GarminAPI interface {
 	Token(ctx context.Context, apiKey string) (garmin.Token, error)
 	SearchActivities(ctx context.Context, token string, p garmin.SearchParams) ([]garmin.ActivitySummary, error)
-	DownloadFIT(ctx context.Context, token string, activityID int64) ([]byte, error)
+	DownloadActivityFile(ctx context.Context, token string, activityID int64) (garmin.ActivityFile, error)
 }
 
 // Store is the database access the sync needs; *store.Store implements it.
@@ -596,8 +597,9 @@ func (r *syncRun) poll(ctx context.Context) error {
 
 // importPage downloads and imports the activities in page that haven't been
 // handled before and that keep (if not nil) accepts by start time, and
-// records what came of each. It stops at the first error that isn't about
-// one activity alone, returning the counts so far.
+// records what came of each. An activity whose file is missing or can't be
+// used is recorded as failed and passed over. importPage stops at the first
+// error that isn't about one activity alone, returning the counts so far.
 func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary, keep func(time.Time) bool) (store.BackfillProgress, error) {
 	var counts store.BackfillProgress
 	ids := make([]string, len(page))
@@ -629,8 +631,8 @@ func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary,
 			return counts, errOutOfTime
 		}
 
-		data, err := withToken(ctx, r, func(token string) ([]byte, error) {
-			return r.api.DownloadFIT(ctx, token, a.ActivityID)
+		file, err := withToken(ctx, r, func(token string) (garmin.ActivityFile, error) {
+			return r.api.DownloadActivityFile(ctx, token, a.ActivityID)
 		})
 		var se *garmin.StatusError
 		if errors.As(err, &se) && se.Code == http.StatusNotFound {
@@ -640,11 +642,23 @@ func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary,
 				Error: "Garmin has no file for this activity"})
 			continue
 		}
+		var de *garmin.DownloadError
+		if errors.As(err, &de) {
+			// The file can't be imported, now or next time; don't let it hold
+			// up the rest.
+			counts.Failed++
+			r.log.Error("garmin activity file unusable", "activity_id", id, "started_at", startedAt,
+				"activity_type", a.ActivityType.TypeKey, "download_size", de.Size, "download_entries", de.Entries,
+				"download_head", de.Head, "err", err)
+			r.record(ctx, store.ProviderActivity{ExternalID: id, StartedAt: startedAt, Status: string(importer.StatusFailed),
+				Error: unusableFileMessage(de)})
+			continue
+		}
 		if err != nil {
 			return counts, err
 		}
 
-		res, err := r.s.importer.Import(ctx, r.conn.UserID, id+".fit", data, importer.Options{
+		res, err := r.s.importer.Import(ctx, r.conn.UserID, file.Name, file.Data, importer.Options{
 			Source:     ProviderGarmin,
 			ExternalID: id,
 			Name:       strings.TrimSpace(a.Name),
@@ -662,11 +676,21 @@ func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary,
 		default:
 			counts.Skipped++
 		}
-		r.log.Debug("garmin activity handled", "activity_id", id, "status", res.Status)
+		r.log.Debug("garmin activity handled", "activity_id", id, "format", path.Ext(file.Name), "status", res.Status)
 		r.record(ctx, store.ProviderActivity{ExternalID: id, StartedAt: startedAt, Status: string(res.Status),
 			ActivityID: res.ActivityID, Error: res.Error})
 	}
 	return counts, nil
+}
+
+// unusableFileMessage tells the user why an activity's file from Garmin
+// wasn't imported.
+func unusableFileMessage(de *garmin.DownloadError) string {
+	msg := "Garmin's file for this activity can't be imported: the download " + de.Reason
+	if names := de.FileNames(); len(names) > 0 {
+		msg += " (it holds " + strings.Join(names, ", ") + ")"
+	}
+	return msg
 }
 
 // record records what came of an activity. If that fails the activity is

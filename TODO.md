@@ -18,6 +18,10 @@ See [docs/garmin.md](docs/garmin.md).
 - **Garmin export ZIP**: accept the export as it is, instead of asking users to unzip the FIT files.
 - **Rotate `SECRETS_KEY`**: sealed values start with a version byte; re-encrypt with a new key.
 - **Garmin OAuth with push**, if a business application is ever approved.
+- **Garmin backfill newest first.** The backfill imports oldest first, so a long history takes a while before recent activities show up. To go newest first:
+  - Page by date, not by offset. `backfill_cursor` is an offset into Garmin's search, and every new activity would shift the offsets of a newest-first list. Page by `endDate` or by the oldest start time handled so far.
+  - Decide what the poll does while a backfill is running, since both would then work from the newest end.
+- **TCX import.** Add a TCX parser to the importer, for uploaded files and for Garmin downloads whose original file is TCX (those are now recorded as failed). Activities that failed that way stay in `provider_activities` and are never downloaded again, so they need a way to be retried, for example by clearing the failed rows whose error names a `.tcx` file, or with a "retry failed activities" action.
 
 ## Generate TypeScript types from the Go API types
 
