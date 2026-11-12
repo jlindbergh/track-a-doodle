@@ -83,8 +83,15 @@ export interface AppConfig {
 export interface BackfillStatus {
   status: 'not_requested' | 'running' | 'done' | 'failed' | 'cancelled';
   consentedAt: string | null;
-  /** How many of the service's activities with GPS have been looked at, oldest first. */
-  checked: number;
+  /**
+   * Start of the latest activity from before connecting that has been handled. The backfill goes oldest
+   * first, so everything up to it is done. Null before the first one.
+   */
+  reachedAt: string | null;
+}
+
+/** What came of the activities handled from a service; activitysync.ActivityCounts in the backend. */
+export interface ActivityCounts {
   imported: number;
   /** Already imported (e.g. from files), possible duplicates, or without a GPS track. */
   skipped: number;
@@ -101,6 +108,8 @@ export interface ConnectionStatus {
   connectedAt: string;
   lastSyncedAt: string | null;
   nextSyncAt: string;
+  /** Every activity handled since connecting, by the backfill and by polling. */
+  activities: ActivityCounts;
   backfill: BackfillStatus;
 }
 

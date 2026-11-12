@@ -237,6 +237,16 @@ func (e *testEnv) syncUntilIdle(t *testing.T, userID string) store.Connection {
 	return store.Connection{}
 }
 
+// status returns what userID is shown about their Garmin connection.
+func (e *testEnv) status(t *testing.T, userID string) Status {
+	t.Helper()
+	conns, err := e.svc.Connections(context.Background(), userID)
+	if err != nil || len(conns) != 1 {
+		t.Fatalf("connections = %v, %v; want one", conns, err)
+	}
+	return conns[0]
+}
+
 func (e *testEnv) activities(t *testing.T, userID string) map[string]string {
 	t.Helper()
 	list, err := e.st.ListActivities(context.Background(), userID)
@@ -301,8 +311,15 @@ func TestBackfillImportsEverythingOnce(t *testing.T) {
 	}
 	c := e.syncUntilIdle(t, u)
 
-	if c.BackfillStatus != store.BackfillDone || c.BackfillCursor != 5 || c.BackfillImported != 5 || c.Status != store.ConnectionActive {
+	if c.BackfillStatus != store.BackfillDone || c.BackfillCursor != 5 || c.Status != store.ConnectionActive {
 		t.Errorf("connection after backfill = %+v", c)
+	}
+	st := e.status(t, u)
+	if want := (ActivityCounts{Imported: 5}); st.Activities != want {
+		t.Errorf("activities = %+v, want %+v", st.Activities, want)
+	}
+	if last := day.Add(96 * time.Hour); st.Backfill.ReachedAt == nil || !st.Backfill.ReachedAt.Equal(last) {
+		t.Errorf("reached %v, want the last run's start, %v", st.Backfill.ReachedAt, last)
 	}
 	got := e.activities(t, u)
 	if len(got) != 5 || got["Third run"] != "running" {
@@ -313,6 +330,13 @@ func TestBackfillImportsEverythingOnce(t *testing.T) {
 			t.Errorf("search %+v, want GPS activities oldest first", p)
 		}
 	}
+
+	// Starting the backfill again keeps the counts: they come from what was
+	// handled, not from the backfill.
+	if st, err := e.svc.StartBackfill(ctx, u, ProviderGarmin); err != nil || st.Activities.Imported != 5 {
+		t.Errorf("after starting again: %+v, %v; want the five imported still counted", st, err)
+	}
+	e.syncUntilIdle(t, u)
 
 	// Polling afterwards downloads nothing again.
 	downloads := len(e.garmin.downloads)
@@ -350,8 +374,8 @@ func TestUnusableDownloadFailsOnlyThatActivity(t *testing.T) {
 	if c.Status != store.ConnectionActive || c.LastError != nil {
 		t.Errorf("status = %s, last error = %v; want active without an error", c.Status, c.LastError)
 	}
-	if c.BackfillStatus != store.BackfillDone || c.BackfillImported != 2 || c.BackfillFailed != 1 {
-		t.Errorf("backfill = %s, %d imported, %d failed; want done, 2 and 1", c.BackfillStatus, c.BackfillImported, c.BackfillFailed)
+	if st := e.status(t, u); c.BackfillStatus != store.BackfillDone || st.Activities != (ActivityCounts{Imported: 2, Failed: 1}) {
+		t.Errorf("backfill = %s, activities = %+v; want done, 2 imported and 1 failed", c.BackfillStatus, st.Activities)
 	}
 	if got := e.activities(t, u); len(got) != 2 || got["First run"] == "" || got["Third run"] == "" {
 		t.Errorf("activities = %v, want the first and third runs", got)
@@ -393,8 +417,8 @@ func TestBackfillImportsGPXOriginals(t *testing.T) {
 	}
 	c := e.syncUntilIdle(t, u)
 
-	if c.BackfillStatus != store.BackfillDone || c.BackfillImported != 2 || c.BackfillFailed != 0 {
-		t.Errorf("backfill = %s, %d imported, %d failed; want done, 2 and 0", c.BackfillStatus, c.BackfillImported, c.BackfillFailed)
+	if st := e.status(t, u); c.BackfillStatus != store.BackfillDone || st.Activities != (ActivityCounts{Imported: 2}) {
+		t.Errorf("backfill = %s, activities = %+v; want done and 2 imported", c.BackfillStatus, st.Activities)
 	}
 	got := e.activities(t, u)
 	if _, ok := got["Uploaded as GPX"]; !ok || len(got) != 2 {
@@ -427,9 +451,9 @@ func TestBackfillSkipsActivitiesAlreadyImportedAsFiles(t *testing.T) {
 	if _, err := e.svc.StartBackfill(ctx, u, ProviderGarmin); err != nil {
 		t.Fatal(err)
 	}
-	c := e.syncUntilIdle(t, u)
-	if c.BackfillImported != 0 || c.BackfillSkipped != 1 {
-		t.Errorf("imported %d, skipped %d; want the upload's twin skipped", c.BackfillImported, c.BackfillSkipped)
+	e.syncUntilIdle(t, u)
+	if st := e.status(t, u); st.Activities != (ActivityCounts{Skipped: 1}) {
+		t.Errorf("activities = %+v; want the upload's twin skipped", st.Activities)
 	}
 	if got := e.activities(t, u); len(got) != 1 {
 		t.Errorf("activities = %v, want just the upload", got)
@@ -523,7 +547,7 @@ func TestExpiredTokenIsRenewed(t *testing.T) {
 	e.garmin.rejectTokens["token-1-"+key] = true
 
 	c := e.syncUntilIdle(t, u)
-	if c.Status != store.ConnectionActive || c.BackfillImported != 1 || e.garmin.tokens != 2 {
+	if c.Status != store.ConnectionActive || e.status(t, u).Activities.Imported != 1 || e.garmin.tokens != 2 {
 		t.Errorf("connection = %+v after %d tokens, want the run imported with a second token", c, e.garmin.tokens)
 	}
 }
