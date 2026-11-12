@@ -45,23 +45,22 @@ type Connection struct {
 
 	BackfillStatus      string
 	BackfillConsentedAt *time.Time
-	BackfillCursor      int
-	BackfillImported    int
-	BackfillSkipped     int
-	BackfillFailed      int
+	// BackfillCursor is how many of the service's activities, oldest first,
+	// the backfill has gone through: the offset of its next page.
+	BackfillCursor int
 
 	CreatedAt time.Time
 }
 
 const connectionColumns = `id, user_id, provider, api_key_enc, key_expires_at, access_token_enc,
 	access_token_expires_at, status, last_error, last_synced_at, next_sync_at, backfill_status,
-	backfill_consented_at, backfill_cursor, backfill_imported, backfill_skipped, backfill_failed, created_at`
+	backfill_consented_at, backfill_cursor, created_at`
 
 func scanConnection(row pgx.Row) (Connection, error) {
 	var c Connection
 	err := row.Scan(&c.ID, &c.UserID, &c.Provider, &c.APIKeyEnc, &c.KeyExpiresAt, &c.AccessTokenEnc,
 		&c.AccessTokenExpiresAt, &c.Status, &c.LastError, &c.LastSyncedAt, &c.NextSyncAt, &c.BackfillStatus,
-		&c.BackfillConsentedAt, &c.BackfillCursor, &c.BackfillImported, &c.BackfillSkipped, &c.BackfillFailed, &c.CreatedAt)
+		&c.BackfillConsentedAt, &c.BackfillCursor, &c.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Connection{}, ErrNotFound
 	}
@@ -151,9 +150,6 @@ func (s *Store) StartBackfill(ctx context.Context, userID, provider string) (Con
 			backfill_status = 'running',
 			backfill_consented_at = now(),
 			backfill_cursor = 0,
-			backfill_imported = 0,
-			backfill_skipped = 0,
-			backfill_failed = 0,
 			next_sync_at = now()
 		 WHERE user_id = $1 AND provider = $2 AND backfill_status <> 'running'
 		RETURNING `+connectionColumns, userID, provider))
@@ -240,27 +236,15 @@ func (s *Store) FinishSync(ctx context.Context, connectionID string, r SyncResul
 	return nil
 }
 
-// BackfillProgress is what a page of a backfill added.
-type BackfillProgress struct {
-	// Cursor is the offset of the next page.
-	Cursor                    int
-	Imported, Skipped, Failed int
-}
-
-// SaveBackfillProgress moves a running backfill on to p.Cursor and adds
-// p's counts. It reports false, and changes nothing, if the backfill is no
-// longer running, e.g. because the user cancelled it.
-func (s *Store) SaveBackfillProgress(ctx context.Context, connectionID string, p BackfillProgress) (bool, error) {
+// SaveBackfillCursor moves a running backfill on to cursor, the offset of
+// its next page. It reports false, and changes nothing, if the backfill is
+// no longer running, e.g. because the user cancelled it.
+func (s *Store) SaveBackfillCursor(ctx context.Context, connectionID string, cursor int) (bool, error) {
 	tag, err := s.pool.Exec(ctx, `
-		UPDATE provider_connections SET
-			backfill_cursor = $2,
-			backfill_imported = backfill_imported + $3,
-			backfill_skipped = backfill_skipped + $4,
-			backfill_failed = backfill_failed + $5
-		 WHERE id = $1 AND backfill_status = 'running'`,
-		connectionID, p.Cursor, p.Imported, p.Skipped, p.Failed)
+		UPDATE provider_connections SET backfill_cursor = $2
+		 WHERE id = $1 AND backfill_status = 'running'`, connectionID, cursor)
 	if err != nil {
-		return false, fmt.Errorf("save backfill progress: %w", err)
+		return false, fmt.Errorf("save backfill cursor: %w", err)
 	}
 	return tag.RowsAffected() > 0, nil
 }
@@ -338,6 +322,36 @@ func (s *Store) RecordProviderActivity(ctx context.Context, connectionID string,
 		return fmt.Errorf("record handled activity: %w", err)
 	}
 	return nil
+}
+
+// ProviderActivityCounts is what came of the activities a connection has
+// handled, counted from the records RecordProviderActivity keeps.
+type ProviderActivityCounts struct {
+	Imported int
+	// Skipped are already imported, possible duplicates or without a GPS
+	// track.
+	Skipped int
+	Failed  int
+	// LatestBefore is the start time of the latest activity handled that
+	// started before the time CountProviderActivities was given, or nil.
+	LatestBefore *time.Time
+}
+
+// CountProviderActivities counts what came of the activities a connection
+// has handled, and finds the latest one that started before before.
+func (s *Store) CountProviderActivities(ctx context.Context, connectionID string, before time.Time) (ProviderActivityCounts, error) {
+	var c ProviderActivityCounts
+	err := s.pool.QueryRow(ctx, `
+		SELECT count(*) FILTER (WHERE status = 'imported'),
+		       count(*) FILTER (WHERE status NOT IN ('imported', 'failed')),
+		       count(*) FILTER (WHERE status = 'failed'),
+		       max(started_at) FILTER (WHERE started_at < $2)
+		  FROM provider_activities WHERE connection_id = $1`, connectionID, before).
+		Scan(&c.Imported, &c.Skipped, &c.Failed, &c.LatestBefore)
+	if err != nil {
+		return ProviderActivityCounts{}, fmt.Errorf("count handled activities: %w", err)
+	}
+	return c, nil
 }
 
 // LatestProviderActivityStart returns the start time of the latest activity
