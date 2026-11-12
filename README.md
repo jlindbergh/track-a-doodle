@@ -32,7 +32,7 @@ To batch-import a folder, sign up in the app first, then run `./dev.sh import ~/
 
 An activity's sport comes from the GPX track's `<type>`. Files without one get a sport from a word like "run", "ride" or "hike" in a track's `<name>`, and failing that in the filename (e.g. `Morning_Run.gpx`).
 
-FIT files (what Garmin and most sports watches record) get their sport from the device, or from the sport's name on the device when it only says "generic". FIT files have no activity name, so they are named after the file. Their track, start time and duration are taken from the records with a GPS position, the same points a GPX export of the activity holds, so importing the same activity as both GPX and FIT is caught as a possible duplicate.
+FIT files (what Garmin and most sports watches record) get their sport from the device, or from the sport's name on the device when it only says "generic". FIT files have no activity name, so they are named after the file. Their track, start time and duration are taken from the records with a GPS position, the same points a GPX export of the activity holds, so importing the same activity as both GPX and FIT is caught as a possible duplicate. Only records within the recorded session, from when the timer was started to when it was stopped, are used. A FIT file can hold GPS records from before or after the session, which may be because the activity was edited after it was completed, for example trimmed in Garmin Connect. Those records are left out, unless the file doesn't say when the session started and ended.
 
 Running it again is safe; see [Duplicate detection](#duplicate-detection).
 
