@@ -26,14 +26,23 @@ var ErrNotActivity = errors.New("not a FIT activity file")
 // e.g. a triathlon. It is what Garmin calls such activities.
 const sportMultisport = "multisport"
 
+// spanSlack is how far outside the sessions' span a record may be and still
+// count as part of the activity, to allow for elapsed times being rounded.
+const spanSlack = time.Second
+
 // Parse parses a FIT activity file. FIT files have no activity name, so the
 // activity is named fallbackName.
 //
-// The track is every record with a GPS position, as one line, and the start
-// time and duration are those of the first and last of these records. A GPX
-// export of the same activity holds just these points, so importing both is
-// caught as a possible duplicate (see importer.DuplicateRule). When the
-// records have no timestamps, the sessions' start and elapsed times are used.
+// The track is the records with a GPS position within the recorded
+// sessions, as one line, and the start time and duration are those of the
+// first and last of these records. A GPX export of the same activity holds
+// just these points, so importing both is caught as a possible duplicate
+// (see importer.DuplicateRule). Files can hold GPS records from before the
+// timer was started or after it was stopped, for example when the activity
+// was trimmed after it was recorded, and these are left out. When the
+// sessions don't say when they start and end, or this leaves fewer than two
+// points, every record with a GPS position is used. When the records have no
+// timestamps, the sessions' start and elapsed times are used.
 //
 // Like gpxfile.Parse, a file without a GPS track gives an
 // *activity.NoTrackError, and positions and timestamps that cannot be stored
@@ -47,22 +56,24 @@ func Parse(data []byte, fallbackName string) (activity.Parsed, error) {
 
 	a := activity.Parsed{Sport: sport(fa, fallbackName)}
 
-	line := make([]activity.LonLat, 0, len(fa.Records))
+	points, err := gpsPoints(fa.Records)
+	if err != nil {
+		return activity.Parsed{}, err
+	}
+	if start, end, ok := sessionSpan(fa.Sessions); ok {
+		if in := within(points, start.Add(-spanSlack), end.Add(spanSlack)); len(in) >= 2 {
+			points = in
+		}
+	}
+	if len(points) < 2 {
+		return activity.Parsed{}, &activity.NoTrackError{Sport: a.Sport}
+	}
+
+	line := make([]activity.LonLat, len(points))
 	var first, last time.Time
-	for i, r := range fa.Records {
-		if r.PositionLat == basetype.Sint32Invalid || r.PositionLong == basetype.Sint32Invalid {
-			continue
-		}
-		lat, lon := r.PositionLatDegrees(), r.PositionLongDegrees()
-		if err := activity.CheckPosition(lat, lon); err != nil {
-			return activity.Parsed{}, fmt.Errorf("%w: record %d has %v", activity.ErrInvalidPosition, i+1, err)
-		}
-		// Some devices write 0,0 before they have a GPS fix.
-		if lat == 0 && lon == 0 {
-			continue
-		}
-		line = append(line, activity.LonLat{Lon: lon, Lat: lat})
-		if t := r.Timestamp; !t.IsZero() {
+	for i, p := range points {
+		line[i] = p.LonLat
+		if t := p.t; !t.IsZero() {
 			if first.IsZero() || t.Before(first) {
 				first = t
 			}
@@ -70,9 +81,6 @@ func Parse(data []byte, fallbackName string) (activity.Parsed, error) {
 				last = t
 			}
 		}
-	}
-	if len(line) < 2 {
-		return activity.Parsed{}, &activity.NoTrackError{Sport: a.Sport}
 	}
 	a.Lines = [][]activity.LonLat{line}
 	a.Name = fallbackName
@@ -90,6 +98,73 @@ func Parse(data []byte, fallbackName string) (activity.Parsed, error) {
 		a.StartedAt, a.DurationS = sessionTimes(fa.Sessions)
 	}
 	return a, nil
+}
+
+// point is a record's GPS position and timestamp, which is zero if unknown.
+type point struct {
+	activity.LonLat
+	t time.Time
+}
+
+// gpsPoints returns the records that have a GPS position, in order.
+func gpsPoints(records []*mesgdef.Record) ([]point, error) {
+	points := make([]point, 0, len(records))
+	for i, r := range records {
+		if r.PositionLat == basetype.Sint32Invalid || r.PositionLong == basetype.Sint32Invalid {
+			continue
+		}
+		lat, lon := r.PositionLatDegrees(), r.PositionLongDegrees()
+		if err := activity.CheckPosition(lat, lon); err != nil {
+			return nil, fmt.Errorf("%w: record %d has %v", activity.ErrInvalidPosition, i+1, err)
+		}
+		// Some devices write 0,0 before they have a GPS fix.
+		if lat == 0 && lon == 0 {
+			continue
+		}
+		points = append(points, point{activity.LonLat{Lon: lon, Lat: lat}, r.Timestamp})
+	}
+	return points, nil
+}
+
+// within returns the points timestamped from start to end, inclusive.
+func within(points []point, start, end time.Time) []point {
+	var in []point
+	for _, p := range points {
+		if !p.t.IsZero() && !p.t.Before(start) && !p.t.After(end) {
+			in = append(in, p)
+		}
+	}
+	return in
+}
+
+// sessionSpan returns when the first of sessions starts and the last one
+// ends. A session starts at its start time, which is when its timer was
+// first started, and ends its total elapsed time later, which is when the
+// timer was last stopped, or at its timestamp if the elapsed time is
+// unknown. ok is false if there are no sessions or one of them lacks a start
+// or an end, since records outside the span can't then be told apart.
+func sessionSpan(sessions []*mesgdef.Session) (start, end time.Time, ok bool) {
+	for _, s := range sessions {
+		if s.StartTime.IsZero() {
+			return time.Time{}, time.Time{}, false
+		}
+		var e time.Time
+		switch {
+		case s.TotalElapsedTime != basetype.Uint32Invalid:
+			e = s.StartTime.Add(time.Duration(s.TotalElapsedTime) * time.Millisecond)
+		case !s.Timestamp.IsZero() && !s.Timestamp.Before(s.StartTime):
+			e = s.Timestamp
+		default:
+			return time.Time{}, time.Time{}, false
+		}
+		if start.IsZero() || s.StartTime.Before(start) {
+			start = s.StartTime
+		}
+		if e.After(end) {
+			end = e
+		}
+	}
+	return start, end, !start.IsZero()
 }
 
 // decode decodes data, which may hold several chained FIT files, as one
