@@ -50,7 +50,8 @@ The code is in [backend/internal/provider/garmin](../backend/internal/provider/g
    - The worker pages through the search, oldest first, with `requiredField=startLatitude` and without treadmill, indoor cycling and virtual activities.
    - It downloads each activity's file and imports it under Garmin's activity name, with the usual [duplicate rule](../README.md#duplicate-detection). So activities already imported from GPX or FIT files are skipped.
    - It imports the FIT file in the download, or else the GPX file. A download with neither, for example only TCX, is recorded as failed and logged as `garmin activity file unusable`, with the activity's id, start and type and the files in the download. The backfill carries on with the next activity.
-   - Progress is saved per page. It resumes after a restart, can be stopped, and hands over to other connections after 10 minutes of work.
+   - Every activity is recorded the moment it is handled (step 4), and the search offset (`backfill_cursor`) is saved after each page. It resumes after a restart from the last finished page, passing over what was already handled. It can be stopped, and hands over to other connections after 10 minutes of work.
+   - The user sees counts of imported, skipped and failed activities, counted from those records, so they update as each activity is handled and survive starting the backfill again. Since it goes oldest first, the start date of the latest activity handled from before connecting shows how far it has come.
 3. **Poll.** Every 30 minutes it fetches activities from a day before the latest one handled. Without a finished backfill, it only imports activities from after the user connected.
 4. **Every activity handled is recorded** in `provider_activities`: imported, skipped or failed. None is downloaded twice, even after the user deletes it.
 
