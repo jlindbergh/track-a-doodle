@@ -72,12 +72,13 @@ type Store interface {
 	ClaimDueConnection(ctx context.Context, lease time.Duration) (store.Connection, error)
 	SaveAccessToken(ctx context.Context, connectionID string, tokenEnc []byte, expiresAt time.Time) error
 	FinishSync(ctx context.Context, connectionID string, r store.SyncResult) error
-	SaveBackfillProgress(ctx context.Context, connectionID string, p store.BackfillProgress) (bool, error)
+	SaveBackfillCursor(ctx context.Context, connectionID string, cursor int) (bool, error)
 	FinishBackfill(ctx context.Context, connectionID, status string) error
 	BackfillRunning(ctx context.Context, connectionID string) (bool, error)
 	HandledProviderActivities(ctx context.Context, connectionID string, externalIDs []string) (map[string]bool, error)
 	RecordProviderActivity(ctx context.Context, connectionID string, a store.ProviderActivity) error
 	LatestProviderActivityStart(ctx context.Context, connectionID string) (*time.Time, error)
+	CountProviderActivities(ctx context.Context, connectionID string, before time.Time) (store.ProviderActivityCounts, error)
 }
 
 // Importer imports activity files; *importer.Importer implements it.
@@ -174,22 +175,41 @@ type Status struct {
 	ConnectedAt  time.Time  `json:"connectedAt"`
 	LastSyncedAt *time.Time `json:"lastSyncedAt"`
 	NextSyncAt   time.Time  `json:"nextSyncAt"`
-	Backfill     Backfill   `json:"backfill"`
+	// Activities counts what came of every activity handled from the
+	// service, by the backfill and by polling, since connecting.
+	Activities ActivityCounts `json:"activities"`
+	Backfill   Backfill       `json:"backfill"`
+}
+
+// ActivityCounts counts what came of the activities handled from a service.
+type ActivityCounts struct {
+	Imported int `json:"imported"`
+	// Skipped are already imported (e.g. from files), possible duplicates,
+	// or without a GPS track.
+	Skipped int `json:"skipped"`
+	Failed  int `json:"failed"`
 }
 
 // Backfill is the progress of importing everything from the service.
 type Backfill struct {
 	Status      string     `json:"status"`
 	ConsentedAt *time.Time `json:"consentedAt"`
-	// Checked is how many of the service's activities with GPS have been
-	// looked at, oldest first.
-	Checked  int `json:"checked"`
-	Imported int `json:"imported"`
-	Skipped  int `json:"skipped"`
-	Failed   int `json:"failed"`
+	// ReachedAt is the start time of the latest activity from before
+	// connecting that has been handled. The backfill goes oldest first, so
+	// everything up to it is done. Nil before the first one.
+	ReachedAt *time.Time `json:"reachedAt"`
 }
 
-func statusOf(c store.Connection) Status {
+// status returns what the user is shown about c. The counts come from the
+// record of handled activities, which is written as each one is handled, so
+// they are always up to date and survive restarting the backfill.
+func (s *Service) status(ctx context.Context, c store.Connection) (Status, error) {
+	// Activities from after connecting may have been polled before the
+	// backfill started; they say nothing about how far it has come.
+	counts, err := s.store.CountProviderActivities(ctx, c.ID, c.CreatedAt)
+	if err != nil {
+		return Status{}, err
+	}
 	return Status{
 		Provider:     c.Provider,
 		Status:       c.Status,
@@ -198,15 +218,13 @@ func statusOf(c store.Connection) Status {
 		ConnectedAt:  c.CreatedAt,
 		LastSyncedAt: c.LastSyncedAt,
 		NextSyncAt:   c.NextSyncAt,
+		Activities:   ActivityCounts{Imported: counts.Imported, Skipped: counts.Skipped, Failed: counts.Failed},
 		Backfill: Backfill{
 			Status:      c.BackfillStatus,
 			ConsentedAt: c.BackfillConsentedAt,
-			Checked:     c.BackfillCursor,
-			Imported:    c.BackfillImported,
-			Skipped:     c.BackfillSkipped,
-			Failed:      c.BackfillFailed,
+			ReachedAt:   counts.LatestBefore,
 		},
-	}
+	}, nil
 }
 
 // keyContext and tokenContext bind sealed credentials to their user and
@@ -242,7 +260,7 @@ func (s *Service) ConnectGarmin(ctx context.Context, userID, apiKey string, keyE
 		return Status{}, err
 	}
 	log.Info("garmin connected", "connection_id", c.ID)
-	return statusOf(c), nil
+	return s.status(ctx, c)
 }
 
 // Connections returns userID's connections.
@@ -253,7 +271,9 @@ func (s *Service) Connections(ctx context.Context, userID string) ([]Status, err
 	}
 	out := make([]Status, len(conns))
 	for i, c := range conns {
-		out[i] = statusOf(c)
+		if out[i], err = s.status(ctx, c); err != nil {
+			return nil, err
+		}
 	}
 	return out, nil
 }
@@ -269,7 +289,7 @@ func (s *Service) StartBackfill(ctx context.Context, userID, provider string) (S
 		return Status{}, err
 	}
 	s.log.Info("backfill started", "provider", provider, "user_id", userID, "connection_id", c.ID)
-	return statusOf(c), nil
+	return s.status(ctx, c)
 }
 
 // CancelBackfill stops userID's backfill from provider.
@@ -282,7 +302,7 @@ func (s *Service) CancelBackfill(ctx context.Context, userID, provider string) (
 		return Status{}, err
 	}
 	s.log.Info("backfill cancelled", "provider", provider, "user_id", userID, "connection_id", c.ID)
-	return statusOf(c), nil
+	return s.status(ctx, c)
 }
 
 // Disconnect deletes userID's connection to provider and its credentials.
@@ -361,6 +381,17 @@ var errOutOfTime = errors.New("work budget used up")
 // SECRETS_KEY has changed.
 var errKeyUnreadable = errors.New("stored API key cannot be decrypted")
 
+// tally counts what came of the activities one sync handled, for its logs.
+type tally struct {
+	Imported, Skipped, Failed int
+}
+
+func (c *tally) add(o tally) {
+	c.Imported += o.Imported
+	c.Skipped += o.Skipped
+	c.Failed += o.Failed
+}
+
 // syncRun is one sync of one connection.
 type syncRun struct {
 	s           *Service
@@ -370,7 +401,7 @@ type syncRun struct {
 	token       string
 	deadline    time.Time
 	backfilling bool
-	counts      store.BackfillProgress
+	counts      tally
 }
 
 func (r *syncRun) sync(ctx context.Context) store.SyncResult {
@@ -527,21 +558,14 @@ func (r *syncRun) backfill(ctx context.Context) (bool, error) {
 		}
 
 		counts, err := r.importPage(ctx, page, nil)
-		r.counts.Imported += counts.Imported
-		r.counts.Skipped += counts.Skipped
-		r.counts.Failed += counts.Failed
+		r.counts.add(counts)
 		if err != nil {
-			// Keep what was done. The page is fetched again next time and
-			// the activities already handled are passed over.
-			counts.Cursor = cursor
-			if _, saveErr := r.s.store.SaveBackfillProgress(ctx, r.conn.ID, counts); saveErr != nil {
-				r.log.Error("save backfill progress", "err", saveErr)
-			}
+			// What was done is recorded activity by activity. The page is
+			// fetched again next time and those activities are passed over.
 			return false, err
 		}
 		cursor += len(page)
-		counts.Cursor = cursor
-		if ok, err := r.s.store.SaveBackfillProgress(ctx, r.conn.ID, counts); err != nil || !ok {
+		if ok, err := r.s.store.SaveBackfillCursor(ctx, r.conn.ID, cursor); err != nil || !ok {
 			return false, err
 		}
 		r.log.Info("backfill page done", "checked", cursor, "page_imported", counts.Imported, "page_skipped", counts.Skipped, "page_failed", counts.Failed)
@@ -582,9 +606,7 @@ func (r *syncRun) poll(ctx context.Context) error {
 			return err
 		}
 		counts, err := r.importPage(ctx, page, keep)
-		r.counts.Imported += counts.Imported
-		r.counts.Skipped += counts.Skipped
-		r.counts.Failed += counts.Failed
+		r.counts.add(counts)
 		if err != nil {
 			return err
 		}
@@ -600,8 +622,8 @@ func (r *syncRun) poll(ctx context.Context) error {
 // records what came of each. An activity whose file is missing or can't be
 // used is recorded as failed and passed over. importPage stops at the first
 // error that isn't about one activity alone, returning the counts so far.
-func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary, keep func(time.Time) bool) (store.BackfillProgress, error) {
-	var counts store.BackfillProgress
+func (r *syncRun) importPage(ctx context.Context, page []garmin.ActivitySummary, keep func(time.Time) bool) (tally, error) {
+	var counts tally
 	ids := make([]string, len(page))
 	for i, a := range page {
 		ids[i] = strconv.FormatInt(a.ActivityID, 10)

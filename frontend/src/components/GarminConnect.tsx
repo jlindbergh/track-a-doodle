@@ -72,7 +72,7 @@ export default function GarminConnect({ onSynced }: Props) {
 
   useEffect(() => {
     if (!connection) return;
-    const seen = `${connection.backfill.imported}|${connection.lastSyncedAt}`;
+    const seen = `${connection.activities.imported}|${connection.lastSyncedAt}`;
     if (seenRef.current !== null && seenRef.current !== seen) onSynced();
     seenRef.current = seen;
   }, [connection, onSynced]);
@@ -146,7 +146,9 @@ export default function GarminConnect({ onSynced }: Props) {
               {' · '}
               {connection.lastSyncedAt
                 ? `last checked ${formatDateTime(connection.lastSyncedAt)}`
-                : 'checking for activities shortly'}
+                : backfill.status === 'running'
+                  ? 'importing your history'
+                  : 'checking for activities shortly'}
             </span>
           </>
         )}
@@ -251,14 +253,17 @@ interface BackfillProgressProps {
 /** What has come of importing everything from Garmin, and the buttons for it. */
 function BackfillProgress({ connection, syncing, busy, onStart, onCancel }: BackfillProgressProps) {
   const b = connection.backfill;
+  const a = connection.activities;
   const automatic = syncing ? ' New activities are added automatically.' : '';
   const counts = [
-    `${formatCount(b.imported, 'activity', 'activities')} imported`,
-    b.skipped > 0 && `${b.skipped} skipped`,
-    b.failed > 0 && `${b.failed} failed`,
+    `${formatCount(a.imported, 'activity', 'activities')} imported`,
+    a.skipped > 0 && `${a.skipped} skipped`,
+    a.failed > 0 && `${a.failed} failed`,
   ]
     .filter(Boolean)
     .join(', ');
+  // The backfill goes oldest first, so the latest activity it has handled says how far it has come.
+  const progress = b.reachedAt ? `Done up to ${formatDate(b.reachedAt)}: ${counts}.` : `${counts}.`;
 
   switch (b.status) {
     case 'not_requested':
@@ -277,7 +282,7 @@ function BackfillProgress({ connection, syncing, busy, onStart, onCancel }: Back
         <div className="garmin-backfill" role="status">
           <p>
             {syncing ? 'Importing your Garmin history…' : 'Importing your Garmin history is paused.'}
-            <span className="hint"> {b.checked} checked so far: {counts}.</span>
+            <span className="hint"> {b.reachedAt ? progress : 'Starting with your oldest activity.'}</span>
           </p>
           {syncing && <progress aria-label="Importing your Garmin history" />}
           <button type="button" className="secondary" onClick={onCancel} disabled={busy}>
@@ -296,8 +301,8 @@ function BackfillProgress({ connection, syncing, busy, onStart, onCancel }: Back
       return (
         <div className="garmin-backfill">
           <p className="hint">
-            Importing your history {b.status === 'cancelled' ? 'was stopped' : 'failed'} after {b.checked} activities:{' '}
-            {counts}.{automatic}
+            Importing your history {b.status === 'cancelled' ? 'was stopped' : 'failed'}. {progress}
+            {automatic}
           </p>
           {syncing && (
             <button type="button" className="secondary" onClick={onStart}>
