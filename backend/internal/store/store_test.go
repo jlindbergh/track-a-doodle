@@ -264,3 +264,30 @@ func TestDeleteActivity(t *testing.T) {
 		}
 	}
 }
+
+func TestActivitiesStartingNear(t *testing.T) {
+	ctx := context.Background()
+	s := testStore(t)
+	u, other := testUser(t, s), testUser(t, s)
+	insert(t, s, u.ID, newActivity(-time.Hour, 3600, 1), nil)
+	onTime := insert(t, s, u.ID, newActivity(30*time.Second, 3600, 1), nil)
+	insert(t, s, u.ID, newActivity(2*time.Minute, 3600, 1), nil)
+	nextDay := insert(t, s, u.ID, newActivity(24*time.Hour, 3600, 1), nil)
+	insert(t, s, other.ID, newActivity(0, 3600, 1), nil) // someone else's
+
+	got, err := s.ActivitiesStartingNear(ctx, u.ID, []time.Time{baseStart, baseStart.Add(24 * time.Hour), baseStart.Add(24*time.Hour + time.Second)},
+		2*time.Second, time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0].ID != onTime.New.ID || got[1].ID != nextDay.New.ID {
+		t.Fatalf("got %+v; want the user's activity 30 s after the first start and the one on the next day, once each", got)
+	}
+	if got[0].Start != (activity.Point{Lat: 59.3, Lon: 18.0}) || got[0].DurationS == nil || *got[0].DurationS != 3600 || got[0].DistanceM < 1000 {
+		t.Errorf("activity = %+v, want its start point, duration and distance", got[0])
+	}
+
+	if got, err := s.ActivitiesStartingNear(ctx, u.ID, nil, time.Second, time.Second); err != nil || len(got) != 0 {
+		t.Errorf("without starts: %v, %v", got, err)
+	}
+}

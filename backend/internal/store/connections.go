@@ -283,6 +283,12 @@ type ProviderActivity struct {
 	Status     string
 	ActivityID string
 	Error      string
+	// MatchedActivityID is the user's activity this one matched, for
+	// already_imported and possible_duplicate, if known.
+	MatchedActivityID string
+	// FromSummary means the service's summary matched an existing activity,
+	// so the file wasn't downloaded.
+	FromSummary bool
 }
 
 // HandledProviderActivities returns which of externalIDs a connection has
@@ -308,16 +314,24 @@ func (s *Store) HandledProviderActivities(ctx context.Context, connectionID stri
 // RecordProviderActivity records what came of an activity a connection
 // handled, so it isn't downloaded again.
 func (s *Store) RecordProviderActivity(ctx context.Context, connectionID string, a ProviderActivity) error {
+	decidedFrom := "file"
+	if a.FromSummary {
+		decidedFrom = "summary"
+	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO provider_activities (connection_id, external_id, started_at, status, activity_id, error)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO provider_activities
+			(connection_id, external_id, started_at, status, activity_id, error, matched_activity_id, decided_from)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (connection_id, external_id) DO UPDATE SET
 			started_at = EXCLUDED.started_at,
 			status = EXCLUDED.status,
 			activity_id = EXCLUDED.activity_id,
 			error = EXCLUDED.error,
+			matched_activity_id = EXCLUDED.matched_activity_id,
+			decided_from = EXCLUDED.decided_from,
 			processed_at = now()`,
-		connectionID, a.ExternalID, a.StartedAt, a.Status, nullIfEmpty(a.ActivityID), nullIfEmpty(a.Error))
+		connectionID, a.ExternalID, a.StartedAt, a.Status, nullIfEmpty(a.ActivityID), nullIfEmpty(a.Error),
+		nullIfEmpty(a.MatchedActivityID), decidedFrom)
 	if err != nil {
 		return fmt.Errorf("record handled activity: %w", err)
 	}
