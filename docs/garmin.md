@@ -31,7 +31,7 @@ Base URL: `https://personal.connectapi.garmin.com`. The [swagger docs](https://d
   - `activityType`, `activitySubType`, and `excludedActivitySubType` (repeatable).
   - `requiredField` (repeatable; the field must not be null).
   - `excludeChildren`, and a bounding box.
-- **Download.** `GET /download-service/files/activity/{id}` returns a ZIP holding the original FIT file.
+- **Download.** `GET /download-service/files/activity/{id}` returns a ZIP (`application/x-zip-compressed`) holding the activity's file "in its original format": FIT from Garmin devices, or GPX or TCX for activities that were uploaded.
 - **Rate limits** aren't documented.
 
 Checked with a real key:
@@ -39,7 +39,7 @@ Checked with a real key:
 - The token response is a raw JWT, sent as `text/plain`. Asking for it with `Accept: application/json, application/octet-stream, application/zip` gets a `406`; with `text/plain`, `*/*` or no `Accept` header it works.
 - The search returns summaries with `activityId`, `activityName`, `startTimeGMT`/`startTimeLocal` (`2026-11-08 10:30:35`), `activityType.typeKey`, `distance`, `duration`, `hasPolyline`, `startLatitude`.
 - `?start=0&limit=1&sortOrder=asc&requiredField=startLatitude` returns the account's first activity with a GPS track, skipping an earlier strength workout without GPS. So **the whole history is reachable**, and `requiredField=startLatitude` leaves out activities without GPS.
-- The download returns a zipped FIT file.
+- The download returns a zipped FIT file for a Garmin-recorded activity. An activity from 2019 had no FIT file in its download; it imports with the GPX fallback, so its original file was GPX.
 
 ## How the sync works
 
@@ -48,7 +48,8 @@ The code is in [backend/internal/provider/garmin](../backend/internal/provider/g
 1. **Connect.** The user pastes their key into the import panel. The backend checks it by asking Garmin for a token. It then stores the key and the token encrypted with AES-256-GCM under `SECRETS_KEY`, each bound to the user, in `provider_connections`.
 2. **Backfill**, only after the user agrees in a dialog that says what happens.
    - The worker pages through the search, oldest first, with `requiredField=startLatitude` and without treadmill, indoor cycling and virtual activities.
-   - It downloads each FIT file and imports it under Garmin's activity name, with the usual [duplicate rule](../README.md#duplicate-detection). So activities already imported from GPX or FIT files are skipped.
+   - It downloads each activity's file and imports it under Garmin's activity name, with the usual [duplicate rule](../README.md#duplicate-detection). So activities already imported from GPX or FIT files are skipped.
+   - It imports the FIT file in the download, or else the GPX file. A download with neither, for example only TCX, is recorded as failed and logged as `garmin activity file unusable`, with the activity's id, start and type and the files in the download. The backfill carries on with the next activity.
    - Progress is saved per page. It resumes after a restart, can be stopped, and hands over to other connections after 10 minutes of work.
 3. **Poll.** Every 30 minutes it fetches activities from a day before the latest one handled. Without a finished backfill, it only imports activities from after the user connected.
 4. **Every activity handled is recorded** in `provider_activities`: imported, skipped or failed. None is downloaded twice, even after the user deletes it.
