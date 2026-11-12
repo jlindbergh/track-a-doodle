@@ -132,16 +132,16 @@ func TestBackfillProgressStopsWhenCancelled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, err := s.SaveBackfillProgress(ctx, c.ID, BackfillProgress{Cursor: 99, Imported: 90, Skipped: 8, Failed: 1})
+	ok, err := s.SaveBackfillCursor(ctx, c.ID, 99)
 	if err != nil || !ok {
-		t.Fatalf("SaveBackfillProgress = %v, %v", ok, err)
+		t.Fatalf("SaveBackfillCursor = %v, %v", ok, err)
 	}
 	got, err := s.CancelBackfill(ctx, u.ID, "garmin")
-	if err != nil || got.BackfillStatus != BackfillCancelled || got.BackfillCursor != 99 || got.BackfillImported != 90 {
+	if err != nil || got.BackfillStatus != BackfillCancelled || got.BackfillCursor != 99 {
 		t.Fatalf("after cancelling: %+v, %v", got, err)
 	}
-	if ok, err := s.SaveBackfillProgress(ctx, c.ID, BackfillProgress{Cursor: 198, Imported: 99}); err != nil || ok {
-		t.Errorf("SaveBackfillProgress after cancel = %v, %v; want false", ok, err)
+	if ok, err := s.SaveBackfillCursor(ctx, c.ID, 198); err != nil || ok {
+		t.Errorf("SaveBackfillCursor after cancel = %v, %v; want false", ok, err)
 	}
 	if err := s.FinishBackfill(ctx, c.ID, BackfillDone); err != nil {
 		t.Fatal(err)
@@ -150,9 +150,9 @@ func TestBackfillProgressStopsWhenCancelled(t *testing.T) {
 		t.Errorf("BackfillRunning = %v, %v", running, err)
 	}
 
-	// Starting again begins from the start with fresh counts.
+	// Starting again begins from the start.
 	got, err = s.StartBackfill(ctx, u.ID, "garmin")
-	if err != nil || got.BackfillStatus != BackfillRunning || got.BackfillCursor != 0 || got.BackfillImported != 0 {
+	if err != nil || got.BackfillStatus != BackfillRunning || got.BackfillCursor != 0 {
 		t.Errorf("after starting again: %+v, %v", got, err)
 	}
 }
@@ -166,12 +166,16 @@ func TestProviderActivities(t *testing.T) {
 	if latest, err := s.LatestProviderActivityStart(ctx, c.ID); err != nil || latest != nil {
 		t.Errorf("latest with none handled = %v, %v", latest, err)
 	}
+	if counts, err := s.CountProviderActivities(ctx, c.ID, baseStart); err != nil || counts != (ProviderActivityCounts{}) {
+		t.Errorf("counts with none handled = %+v, %v", counts, err)
+	}
 	ins := insert(t, s, u.ID, newActivity(0, 3600, 1), nil)
-	t1, t2 := baseStart, baseStart.Add(24*time.Hour)
+	t1, t2, t3 := baseStart, baseStart.Add(24*time.Hour), baseStart.Add(48*time.Hour)
 	for _, a := range []ProviderActivity{
 		{ExternalID: "1", StartedAt: &t1, Status: "imported", ActivityID: ins.New.ID},
 		{ExternalID: "2", StartedAt: &t2, Status: "possible_duplicate"},
 		{ExternalID: "2", StartedAt: &t2, Status: "possible_duplicate"}, // recorded twice
+		{ExternalID: "4", StartedAt: &t3, Status: "failed", Error: "no file"},
 	} {
 		if err := s.RecordProviderActivity(ctx, c.ID, a); err != nil {
 			t.Fatal(err)
@@ -181,8 +185,12 @@ func TestProviderActivities(t *testing.T) {
 	if err != nil || !handled["1"] || !handled["2"] || handled["3"] {
 		t.Errorf("handled = %v, %v; want 1 and 2", handled, err)
 	}
-	if latest, err := s.LatestProviderActivityStart(ctx, c.ID); err != nil || latest == nil || !latest.Equal(t2) {
-		t.Errorf("latest = %v, %v; want %v", latest, err, t2)
+	if latest, err := s.LatestProviderActivityStart(ctx, c.ID); err != nil || latest == nil || !latest.Equal(t3) {
+		t.Errorf("latest = %v, %v; want %v", latest, err, t3)
+	}
+	counts, err := s.CountProviderActivities(ctx, c.ID, t3)
+	if err != nil || counts.Imported != 1 || counts.Skipped != 1 || counts.Failed != 1 || counts.LatestBefore == nil || !counts.LatestBefore.Equal(t2) {
+		t.Errorf("counts = %+v, %v; want 1 of each, the latest before %v on %v", counts, err, t3, t2)
 	}
 
 	// Deleting the activity keeps the record, so it isn't imported again.
